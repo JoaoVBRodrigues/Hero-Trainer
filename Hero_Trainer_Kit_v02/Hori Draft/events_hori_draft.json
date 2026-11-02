@@ -1,0 +1,452 @@
+{
+  "schema_version": 3,
+  "notes": "Rascunho para revisão do autor. Não sobrescreve data/events.json. Adiciona route_state_delta, route_state_set e stats_delta ao schema v2 existente; documentado em docs/08_HORI_ROTA_NARRATIVA_V1.md secao 7.",
+  "events": [
+    {
+      "id": "hori_face_clues_w02",
+      "campaign": "hori",
+      "title": "Um rosto conhecido?",
+      "category": "relational",
+      "window": { "week_min": 1, "week_max": 2 },
+      "priority": 50,
+      "repeatable": false,
+      "trigger": {
+        "all": [
+          { "path": "flags.hori_face_clues_w02_seen", "op": "==", "value": false }
+        ]
+      },
+      "dialogue": [
+        { "speaker": "hori", "text": "Pera, você mudou o cabelo? Ficou bom." },
+        { "speaker": "tama", "text": "Hori... sou eu de ontem. Não mudei nada." },
+        { "speaker": "hori", "text": "Eu sei disso! Só tava testando se você notava que eu notei." },
+        { "speaker": "tama", "text": "Isso nem faz sentido." },
+        { "speaker": "hori", "text": "Faz, sim. Só não pra você." }
+      ],
+      "choices": [
+        {
+          "id": "ask_signals",
+          "label": "Perguntar, com cuidado, que sinais ajudam Hori a reconhecer as pessoas.",
+          "effects": {
+            "axes_delta": { "solidarity": 6 },
+            "route_state_delta": { "identification_aids_progress": 1 },
+            "resources_delta": { "stress": 2 },
+            "flags_set": { "hori_face_clues_w02_seen": true, "hori_identification_aid_offered": true }
+          }
+        },
+        {
+          "id": "drop_subject",
+          "label": "Deixar passar e conversar sobre outra coisa.",
+          "effects": {
+            "axes_delta": { "integrity": 4 },
+            "resources_delta": { "mood": 3 },
+            "flags_set": { "hori_face_clues_w02_seen": true, "hori_subject_dropped": true }
+          }
+        },
+        {
+          "id": "private_later",
+          "label": "Comentar em particular depois, sem plateia.",
+          "effects": {
+            "axes_delta": { "autonomy": 6 },
+            "bonds_delta": { "instructor": 3 },
+            "flags_set": { "hori_face_clues_w02_seen": true, "hori_private_conversation": true }
+          }
+        }
+      ],
+      "aftermath": "Sem cena extra obrigatória; efeito registrado em flags/eixos para uso posterior.",
+      "continuity_check": "Nao define causa da dificuldade de reconhecimento alem do canon; nao trata como falha moral."
+    },
+    {
+      "id": "hori_core_protocol_w03",
+      "campaign": "hori",
+      "title": "Protocolo de contenção",
+      "category": "main",
+      "window": { "week_min": 3, "week_max": 4 },
+      "priority": 90,
+      "repeatable": false,
+      "trigger": {
+        "all": [
+          { "path": "flags.hori_core_protocol_w03_seen", "op": "==", "value": false }
+        ]
+      },
+      "dialogue": [
+        { "speaker": "instructor", "text": "Hoje revisamos seu protocolo de contenção. É rotina." },
+        { "speaker": "hori", "text": "Rotina assustadora, mas tudo bem, eu topo." },
+        { "speaker": "instructor", "text": "Se alguma coisa parecer instável, você avisa, não segura sozinha." },
+        { "speaker": "hori", "text": "Último lugar que eu seguro sozinha é justamente esse. Juro." },
+        { "speaker": "hori", "text": "...Tá, eu seguro às vezes. Mas eu aviso depois. Quase sempre." },
+        { "speaker": "instructor", "text": "Isso não é a mesma coisa." },
+        { "speaker": "hori", "text": "É parecido o suficiente pra mim dormir à noite." }
+      ],
+      "choices": [
+        {
+          "id": "team_training",
+          "label": "Treino intensivo de contenção com equipe de confiança por perto.",
+          "effects": {
+            "stats_delta": { "tec": 4 },
+            "route_state_delta": { "core_stability": 8, "trusted_network": 5 },
+            "resources_delta": { "stress": 6 },
+            "flags_set": { "hori_core_protocol_w03_seen": true, "hori_core_team_protocol": true }
+          }
+        },
+        {
+          "id": "lab_training",
+          "label": "Prática controlada só com especialistas, em ambiente fechado.",
+          "effects": {
+            "stats_delta": { "sin": 4 },
+            "route_state_delta": { "core_stability": 10, "trusted_network": -2 },
+            "axes_delta": { "integrity": 4 },
+            "flags_set": { "hori_core_protocol_w03_seen": true, "hori_core_lab_protocol": true }
+          }
+        },
+        {
+          "id": "let_her_pace",
+          "label": "Apresentar as opções e deixar Hori decidir o ritmo.",
+          "effects": {
+            "axes_delta": { "autonomy": 8 },
+            "route_state_delta": { "core_stability": 4 },
+            "bonds_delta": { "instructor": 4 },
+            "flags_set": { "hori_core_protocol_w03_seen": true, "hori_core_agency": true }
+          }
+        }
+      ],
+      "aftermath": "Linha curta na semana seguinte reforçando o estilo de protocolo escolhido.",
+      "continuity_check": "Trata core_stability como sistema isolado, sem definir natureza do nucleo."
+    },
+    {
+      "id": "hori_dorm_party_w05",
+      "campaign": "hori",
+      "title": "A festa não parou",
+      "category": "relational",
+      "window": { "week_min": 5, "week_max": 5 },
+      "priority": 40,
+      "repeatable": false,
+      "trigger": {
+        "all": [
+          { "path": "flags.hori_dorm_party_w05_seen", "op": "==", "value": false }
+        ]
+      },
+      "dialogue": [
+        { "speaker": "hori", "text": "Eu disse que ia trazer o jogo de cartas e eu trouxe o jogo de cartas." },
+        { "speaker": "friend2", "text": "Você trouxe o jogo errado de novo." },
+        { "speaker": "hori", "text": "É o mesmo conceito! Cartas! Números! Decepção coletiva!" },
+        { "speaker": "hori", "text": "Peguei rápido dessa vez, né?" },
+        { "speaker": "instructor", "text": "Peguei." },
+        { "speaker": "hori", "text": "Não conta pra ninguém que eu tava contando os pontos pra saber quem tava on." }
+      ],
+      "choices": [
+        {
+          "id": "inform_friend",
+          "label": "Comentar com uma amiga próxima sobre a dificuldade de Hori, com a permissão dela.",
+          "effects": {
+            "route_state_delta": { "trusted_network": 8 },
+            "axes_delta": { "solidarity": 5 },
+            "flags_set": { "hori_dorm_party_w05_seen": true, "hori_friend_informed": true }
+          }
+        },
+        {
+          "id": "keep_light",
+          "label": "Preservar a privacidade de Hori e deixar o momento ser só diversão.",
+          "effects": {
+            "resources_delta": { "mood": 6, "stress": -4 },
+            "flags_set": { "hori_dorm_party_w05_seen": true, "hori_privacy_preserved": true }
+          }
+        },
+        {
+          "id": "group_system",
+          "label": "Sugerir, de leve, um sistema combinado entre as amigas.",
+          "effects": {
+            "route_state_delta": { "identification_aids_progress": 1 },
+            "route_state_set_if": { "condition_flag": "hori_identification_aid_offered", "field": "identification_aids", "value": true },
+            "axes_delta": { "integrity": 4 },
+            "flags_set": { "hori_dorm_party_w05_seen": true, "hori_group_system_proposed": true }
+          }
+        }
+      ],
+      "aftermath": "Sem cena extra obrigatória.",
+      "continuity_check": "Cena predominantemente leve, conforme objetivo narrativo de momentos de alegria genuina."
+    },
+    {
+      "id": "hori_academy_audit_w06",
+      "campaign": "hori",
+      "title": "Inspeção de protocolos",
+      "category": "world",
+      "window": { "week_min": 6, "week_max": 7 },
+      "priority": 60,
+      "repeatable": false,
+      "trigger": {
+        "all": [
+          { "path": "flags.hori_academy_audit_w06_seen", "op": "==", "value": false }
+        ]
+      },
+      "dialogue": [
+        { "speaker": "auditor", "text": "Precisamos atualizar o arquivo de risco da cadete Hori." },
+        { "speaker": "hori", "text": "'Arquivo de risco.' Adoro meu título de trabalho." },
+        { "speaker": "auditor", "text": "É procedimento padrão." },
+        { "speaker": "hori", "text": "Padrão pra quem tem um negócio perigoso dentro do peito, você quer dizer." },
+        { "speaker": "instructor", "text": "Ninguém aqui te chamou de perigosa." },
+        { "speaker": "hori", "text": "Não precisaram. Tem uma pasta com meu nome que já fala por eles." }
+      ],
+      "choices": [
+        {
+          "id": "active_voice",
+          "label": "Exigir que Hori participe da reunião de avaliação, com voz ativa.",
+          "effects": {
+            "resources_delta": { "reputation": 6 },
+            "axes_delta": { "autonomy": 6 },
+            "route_state_delta": { "echo_pressure": 3 },
+            "flags_set": { "hori_academy_audit_w06_seen": true, "hori_had_voice_in_review": true }
+          }
+        },
+        {
+          "id": "minimize_file",
+          "label": "Negociar discrição, mantendo o arquivo mínimo necessário.",
+          "effects": {
+            "route_state_delta": { "trusted_network": 4 },
+            "resources_delta": { "reputation": -2 },
+            "axes_delta": { "integrity": 4 },
+            "flags_set": { "hori_academy_audit_w06_seen": true, "hori_review_minimized": true }
+          }
+        },
+        {
+          "id": "challenge_tone",
+          "label": "Questionar formalmente o tom do processo, em nome da cadete.",
+          "effects": {
+            "axes_delta": { "solidarity": 6 },
+            "resources_delta": { "reputation": -4 },
+            "bonds_delta": { "instructor": 4 },
+            "flags_set": { "hori_academy_audit_w06_seen": true, "hori_review_challenged": true }
+          }
+        }
+      ],
+      "aftermath": "Impacto registrado em flags/reputação, sem cena extra obrigatória.",
+      "continuity_check": "Academia nao e tratada como vila automatica nem protetora perfeita."
+    },
+    {
+      "id": "hori_luppi_strategy_w09",
+      "campaign": "hori",
+      "title": "Plano de duas",
+      "category": "relational",
+      "window": { "week_min": 9, "week_max": 10 },
+      "priority": 45,
+      "repeatable": false,
+      "trigger": {
+        "all": [
+          { "path": "flags.hori_luppi_strategy_w09_seen", "op": "==", "value": false }
+        ]
+      },
+      "dialogue": [
+        { "speaker": "luppi", "text": "Se a Ruptura reagir como da última vez, seu núcleo vai ficar instável de novo. Isso é um problema de nível difícil." },
+        { "speaker": "hori", "text": "Obrigada por reduzir meu trauma a um nível de dificuldade." },
+        { "speaker": "luppi", "text": "Não foi isso que eu quis dizer. Foi mais fácil de explicar assim." },
+        { "speaker": "hori", "text": "Relaxa, eu entendi. E tipo... obrigada. Sério." },
+        { "speaker": "luppi", "text": "Eu só preciso saber o seu HP real antes de entrar lá de novo." },
+        { "speaker": "hori", "text": "Meu HP real é 'aceitável com reservas'. Pode anotar isso." }
+      ],
+      "choices": [
+        {
+          "id": "share_detail",
+          "label": "Compartilhar com Luppi, em detalhe, o estado atual do núcleo.",
+          "effects": {
+            "bonds_delta": { "luppi": 10 },
+            "route_state_delta": { "honesty_to_friends": 6 },
+            "resources_delta": { "stress": 3 },
+            "flags_set": { "hori_luppi_strategy_w09_seen": true, "hori_opened_up_to_luppi": true }
+          }
+        },
+        {
+          "id": "summarize",
+          "label": "Resumir o essencial e manter o resto em privado.",
+          "effects": {
+            "bonds_delta": { "luppi": 5 },
+            "axes_delta": { "integrity": 3 },
+            "flags_set": { "hori_luppi_strategy_w09_seen": true, "hori_summarized_for_luppi": true }
+          }
+        },
+        {
+          "id": "tactical_lead",
+          "label": "Deixar Luppi liderar o planejamento tático sem entrar em detalhes pessoais.",
+          "effects": {
+            "bonds_delta": { "luppi": 3 },
+            "axes_delta": { "autonomy": 5 },
+            "stats_delta": { "sin": 2 },
+            "flags_set": { "hori_luppi_strategy_w09_seen": true, "hori_kept_distance_tactical": true }
+          }
+        }
+      ],
+      "aftermath": "Sem cena extra obrigatória.",
+      "continuity_check": "Luppi mantem voz referencial a jogos; nao resolve nem explica o autismo dela."
+    },
+    {
+      "id": "hori_echo_confrontation_w11",
+      "campaign": "hori",
+      "title": "A outra voz",
+      "category": "main",
+      "window": { "week_min": 11, "week_max": 12 },
+      "priority": 95,
+      "repeatable": false,
+      "trigger": {
+        "any": [
+          {
+            "all": [
+              { "path": "flags.hori_echo_confrontation_w11_seen", "op": "==", "value": false },
+              { "path": "route_state.echo_pressure", "op": ">=", "value": 25 }
+            ]
+          },
+          {
+            "all": [
+              { "path": "flags.hori_echo_confrontation_w11_seen", "op": "==", "value": false },
+              { "path": "week", "op": ">=", "value": 12 }
+            ]
+          }
+        ]
+      },
+      "dialogue": [
+        { "speaker": "echo", "text": "Você podia simplesmente parar de fingir que está tudo bem." },
+        { "speaker": "hori", "text": "Eu não tô fingindo. Eu tô... administrando." },
+        { "speaker": "echo", "text": "Seria mais fácil se você parasse de administrar." },
+        { "speaker": "hori", "text": "Mais fácil pra quem?" },
+        { "speaker": "echo", "text": "Pra nós duas." },
+        { "speaker": "hori", "text": "Você fala como se a gente fosse time. A gente não é time." },
+        { "speaker": "echo", "text": "Ainda não." },
+        { "speaker": "hori", "text": "Isso foi dramático até pros seus padrões." }
+      ],
+      "choices": [
+        {
+          "id": "refuse_and_seek_support",
+          "label": "Recusar o diálogo com a voz e pedir apoio imediato.",
+          "effects": {
+            "route_state_delta": { "echo_pressure": -10, "trusted_network": 6 },
+            "axes_delta": { "solidarity": 4 },
+            "flags_set": { "hori_echo_confrontation_w11_seen": true, "hori_refused_echo": true }
+          }
+        },
+        {
+          "id": "engage_echo",
+          "label": "Engajar com a voz, tentando entender o que ela realmente propõe.",
+          "effects": {
+            "route_state_delta": { "echo_pressure": 8 },
+            "stats_delta": { "sin": 3 },
+            "axes_delta": { "ambition": 3 },
+            "flags_set": { "hori_echo_confrontation_w11_seen": true, "hori_engaged_echo": true }
+          }
+        },
+        {
+          "id": "hide_it",
+          "label": "Cortar a conversa e não contar a ninguém o que aconteceu.",
+          "effects": {
+            "route_state_delta": { "honesty_to_friends": -8, "echo_pressure": 4 },
+            "axes_delta": { "autonomy": 4 },
+            "flags_set": { "hori_echo_confrontation_w11_seen": true, "hori_hid_echo_event": true }
+          }
+        }
+      ],
+      "aftermath": "Linha curta no evento seguinte referenciando o estado emocional de Hori.",
+      "continuity_check": "A voz permanece ambigua: nao confirmada como vila, consciencia independente ou origem energetica."
+    },
+    {
+      "id": "hori_rupture_investigation_w12",
+      "campaign": "hori",
+      "title": "O que a academia sabia",
+      "category": "world",
+      "window": { "week_min": 12, "week_max": 13 },
+      "priority": 55,
+      "repeatable": false,
+      "trigger": {
+        "all": [
+          { "path": "flags.hori_rupture_investigation_w12_seen", "op": "==", "value": false }
+        ]
+      },
+      "dialogue": [
+        { "speaker": "researcher", "text": "Os registros da Ruptura do Observatório batem parcialmente com o perfil do seu núcleo." },
+        { "speaker": "hori", "text": "'Parcialmente' é uma palavra generosa pra 'a gente não sabe'." },
+        { "speaker": "researcher", "text": "É uma palavra honesta pra 'ainda estamos analisando'." },
+        { "speaker": "hori", "text": "Analisando há quanto tempo?" }
+      ],
+      "choices": [
+        {
+          "id": "press_records",
+          "label": "Pressionar por acesso completo aos registros.",
+          "effects": {
+            "stats_delta": { "teo": 5 },
+            "resources_delta": { "reputation": -3 },
+            "axes_delta": { "ambition": 4 },
+            "flags_set": { "hori_rupture_investigation_w12_seen": true, "hori_pressed_for_records": true }
+          }
+        },
+        {
+          "id": "accept_partial",
+          "label": "Aceitar o que for compartilhado voluntariamente, sem forçar.",
+          "effects": {
+            "resources_delta": { "reputation": 2 },
+            "axes_delta": { "integrity": 3 },
+            "flags_set": { "hori_rupture_investigation_w12_seen": true, "hori_accepted_partial_info": true }
+          }
+        },
+        {
+          "id": "trade_experience",
+          "label": "Compartilhar a própria experiência da Ruptura em troca de transparência.",
+          "effects": {
+            "route_state_delta": { "trusted_network": 6, "honesty_to_friends": 4 },
+            "resources_delta": { "reputation": 4 },
+            "flags_set": { "hori_rupture_investigation_w12_seen": true, "hori_traded_info_for_transparency": true }
+          }
+        }
+      ],
+      "aftermath": "Sem cena extra obrigatória.",
+      "continuity_check": "Nao resolve origem do nucleo nem da Ruptura original; mantem lacuna de canon."
+    },
+    {
+      "id": "hori_ray_aftermath_w14",
+      "campaign": "hori",
+      "title": "O que ficou da missão",
+      "category": "relational",
+      "window": { "week_min": 14, "week_max": 15 },
+      "priority": 45,
+      "repeatable": false,
+      "trigger": {
+        "all": [
+          { "path": "flags.hori_ray_aftermath_w14_seen", "op": "==", "value": false }
+        ]
+      },
+      "dialogue": [
+        { "speaker": "ray", "text": "Você carregou peso demais lá dentro." },
+        { "speaker": "hori", "text": "Eu carrego peso o tempo todo, Ray. Isso foi terça-feira." },
+        { "speaker": "ray", "text": "Não brinca com isso." },
+        { "speaker": "hori", "text": "Eu brinco com tudo. É assim que eu seguro." },
+        { "speaker": "hori", "text": "...Obrigada por ficar por perto, lá dentro." },
+        { "speaker": "ray", "text": "Sempre vou ficar." }
+      ],
+      "choices": [
+        {
+          "id": "credit_publicly",
+          "label": "Reconhecer abertamente o esforço de Ray na missão, em público.",
+          "effects": {
+            "bonds_delta": { "ray": 10 },
+            "axes_delta": { "solidarity": 4 },
+            "flags_set": { "hori_ray_aftermath_w14_seen": true, "hori_credited_ray_publicly": true }
+          }
+        },
+        {
+          "id": "open_up_private",
+          "label": "Conversar em particular sobre o que cada uma sentiu durante a missão.",
+          "effects": {
+            "bonds_delta": { "ray": 7 },
+            "route_state_delta": { "honesty_to_friends": 6 },
+            "flags_set": { "hori_ray_aftermath_w14_seen": true, "hori_opened_up_to_ray": true }
+          }
+        },
+        {
+          "id": "move_on",
+          "label": "Focar em seguir em frente, sem reabrir a missão em detalhes.",
+          "effects": {
+            "bonds_delta": { "ray": 3 },
+            "resources_delta": { "stress": -5 },
+            "flags_set": { "hori_ray_aftermath_w14_seen": true, "hori_moved_on_quickly": true }
+          }
+        }
+      ],
+      "aftermath": "Leva direto à resolução da campanha na semana 16.",
+      "continuity_check": "Ray nao ganha personalidade verbal fixa alem do estabelecido no canon."
+    }
+  ]
+}

@@ -1,21 +1,19 @@
-extends SceneTree
+@tool
+extends McpTestSuite
 
 const TrainingServiceScript = preload("res://scripts/training_service.gd")
 
-var _failures: int = 0
-var _assertions: int = 0
+
+func suite_name() -> String:
+	return "Training Service"
 
 
-func _initialize() -> void:
-	call_deferred("_run_tests")
-
-
-func _run_tests() -> void:
+func test_training_regressions() -> void:
 	var service: TrainingService = TrainingServiceScript.new()
-	_check(service.load_project_data(), "project JSON loads")
-	if _failures > 0:
-		_finish()
+	if not service.load_project_data():
+		assert_true(false, "project JSON loads")
 		return
+	_check(true, "project JSON loads")
 
 	service.set_random_seed(_seed_with_safe_training_draws())
 	_test_configuration_comes_from_json(service)
@@ -39,7 +37,6 @@ func _run_tests() -> void:
 	_test_seeded_sequences_are_reproducible(service)
 	_test_rng_state_continues_with_campaign(service)
 	_test_non_failing_activities_do_not_draw(service)
-	_finish()
 
 
 func _test_configuration_comes_from_json(service: TrainingService) -> void:
@@ -227,6 +224,11 @@ func _state_snapshot(state: TrainingState) -> Dictionary:
 		"week": state.week,
 		"actions_remaining": state.actions_remaining,
 		"stats": state.stats.duplicate(),
+		"axes": state.axes.duplicate(),
+		"route_state": state.route_state.duplicate(),
+		"flags": state.flags.duplicate(),
+		"mission_stage": state.mission_stage,
+		"ending_id": state.ending_id,
 		"energy": state.energy,
 		"stress": state.stress,
 		"motivation": state.motivation,
@@ -319,6 +321,7 @@ func _test_expanded_caps_and_invalid_data(service: TrainingService) -> void:
 		FileAccess.get_file_as_string("res://Hero_Trainer_Kit_v02/data/activities.json")
 	)
 	invalid_activities_data["unexpected_key"] = true
+	expect_script_error_containing("Chave desconhecida em activities.json")
 	_check(
 		not service.load_data(initial_character_data, invalid_activities_data),
 		"unknown JSON keys are rejected"
@@ -566,12 +569,4 @@ func _seed_with_roll_below(chance_percent: int) -> int:
 
 
 func _check(condition: bool, description: String) -> void:
-	_assertions += 1
-	if not condition:
-		_failures += 1
-		push_error("FAIL: %s" % description)
-
-
-func _finish() -> void:
-	print("Testes do serviço: %d verificações, %d falhas." % [_assertions, _failures])
-	quit(1 if _failures > 0 else 0)
+	assert_true(condition, description)

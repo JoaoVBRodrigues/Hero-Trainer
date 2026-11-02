@@ -39,6 +39,18 @@ A prévia exibe as chances e os dois cenários, não consulta nem avança o RNG.
 
 Cada `TrainingState` guarda `rng_seed` e `rng_state`. `TrainingService.set_random_seed(seed)` define a seed de novas campanhas para testes/reprodução. O estado atual do gerador acompanha a campanha nas cópias e avanços de semana, permitindo continuar futuramente a sequência após uma serialização. A seed padrão de runtime é inicializada aleatoriamente. O retorno estruturado de `apply_activity` inclui atividade, resultado (sucesso, falha ou determinístico), probabilidades, sorteio efetivamente realizado e estado aplicado.
 
+## Integração narrativa da rota de Hori — Fase 2C
+
+Os eventos, a missão e os quatro finais são carregados diretamente dos rascunhos aprovados, mantidos em `Hero_Trainer_Kit_v02/Hori Draft/`. Esses arquivos continuam identificados como rascunhos: sua integração jogável não os transforma em cânone nem altera os documentos de cânone.
+
+Os eventos são elegíveis conforme janela semanal, prioridade, gatilhos e flags declarados nos JSONs. Uma escolha válida aplica efeitos em uma cópia do estado e só a substitui quando todos os efeitos são válidos. Eventos e escolhas de missão não consomem ações semanais nem avançam o RNG do treinamento.
+
+A missão de três etapas abre na janela declarada no JSON. Requisitos atendidos aplicam o resultado de sucesso; requisitos não atendidos aplicam a falha recuperável declarada, sem bloquear a campanha e sem sorteio. Para o Pulso de Contenção, a regra determinística aprovada para esta implementação é sucesso somente quando `core_stability >= 55` **e** `tec >= 30`; caso contrário, aplica-se a falha recuperável. Esses limiares são uma decisão de implementação, não um fato de cânone.
+
+Os eixos narrativos são limitados a -100…100. Os limites de `route_state` são definidos explicitamente em `TrainingState`; `identification_aids_progress` começa em zero quando ausente dos dados iniciais e varia de 0 a 2. Os quatro finais são selecionados pelas condições e prioridades do JSON quando a campanha termina.
+
+Na interface, diálogos, escolhas, resultados de missão e epílogos são apresentados em um modal. As escolhas não alteram a quantidade de ações restante. Em runtime a 1024×768, os três botões do primeiro evento aparecem completos; as opções mais longas da missão ficam numa região de rolagem localizada, que também acompanha o foco do teclado. O modal de missão, o resultado de falha recuperável do Pulso e o epílogo foram verificados.
+
 ## Pontos para playtest de balanceamento
 
 - Estágio paga +25 créditos e +1 reputação por ação; compare o valor de dinheiro em usos futuros antes de introduzir compras/despesas.
@@ -49,7 +61,7 @@ Cada `TrainingState` guarda `rng_seed` e `rng_state`. `TrainingService.set_rando
 ## Executar
 
 - Abrir a pasta do projeto no Godot 4.5 e executar a cena principal.
-- Executar os testes no PowerShell a partir da pasta do projeto: `& "C:\caminho\para\Godot.exe" --headless --path . --script "$((Resolve-Path .\tests\training_service_test.gd).Path)"`
+- Executar as suítes `test_*.gd` com `godot-ai-test_run` no Godot AI MCP. A suíte de treinamento mantém as 237 verificações de regressão; a suíte narrativa valida eventos, missão, finais e conclusão da campanha.
 - Executar a validação de importação: `godot --headless --path . --editor --quit-after 3`
 
 Neste ambiente, o executável está em `C:\Users\João\Downloads\Godot_v4.5.1-stable_win64.exe\Godot_v4.5.1-stable_win64.exe`. Se `godot` não estiver no `PATH`, substitua o comando pelo caminho local do executável.

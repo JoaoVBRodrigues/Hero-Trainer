@@ -4,6 +4,7 @@ signal week_completed(week_number: int)
 
 const TrainingServiceScript = preload("res://scripts/training_service.gd")
 const TrainingThemeScript = preload("res://scripts/training_theme.gd")
+const NarrativeServiceScript = preload("res://scripts/narrative_service.gd")
 const STAT_LABELS: Dictionary[StringName, String] = {
 	&"pot": "Potência",
 	&"res": "Resistência",
@@ -13,6 +14,7 @@ const STAT_LABELS: Dictionary[StringName, String] = {
 }
 
 var _service: TrainingService
+var _narrative_service: NarrativeService
 var _state: TrainingState
 var _selected_activity: StringName = &""
 var _character_name_label: Label
@@ -36,18 +38,46 @@ var _feedback_label: Label
 var _confirm_button: Button
 var _cancel_button: Button
 var _advance_button: Button
+var _narrative_overlay: Control
+var _narrative_title: Label
+var _narrative_meta: Label
+var _narrative_speaker: Label
+var _narrative_body: Label
+var _narrative_result: Label
+var _narrative_choices: VBoxContainer
+var _narrative_continue: Button
+var _active_event: Dictionary = {}
+var _active_dialogue: Array = []
+var _dialogue_index: int = 0
+var _narrative_mode: StringName = &""
+var _active_mission_stage: Dictionary = {}
 
 
 func _ready() -> void:
 	_service = TrainingServiceScript.new()
 	var project_data_loaded: bool = _service.load_project_data()
+	_narrative_service = NarrativeServiceScript.new()
+	var narrative_data_loaded: bool = false
+	if project_data_loaded:
+		_narrative_service.set_limits(
+			_service.get_attribute_cap(),
+			_service.get_resource_cap(),
+			_service.get_reputation_cap(),
+			_service.get_bond_cap()
+		)
+		narrative_data_loaded = _narrative_service.load_project_data()
 	_build_interface()
 	if not project_data_loaded:
 		_feedback_label.text = "Não foi possível carregar os dados de treinamento."
 		_set_activity_buttons_enabled(false)
 		return
+	if not narrative_data_loaded:
+		_feedback_label.text = "Não foi possível carregar os dados da campanha narrativa."
+		_set_activity_buttons_enabled(false)
+		return
 	_state = _service.create_initial_state()
 	_refresh_state()
+	_process_narrative_flow()
 
 
 func set_character_presentation(
@@ -85,6 +115,7 @@ func _build_interface() -> void:
 	layout.add_child(_build_header())
 	layout.add_child(_build_main_panels())
 	layout.add_child(_build_preview_dock())
+	_build_narrative_overlay()
 
 
 func _build_header() -> PanelContainer:
@@ -510,6 +541,89 @@ func _build_preview_dock() -> PanelContainer:
 	return panel
 
 
+func _build_narrative_overlay() -> void:
+	_narrative_overlay = Control.new()
+	_narrative_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_narrative_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	_narrative_overlay.visible = false
+	_narrative_overlay.z_index = 10
+	add_child(_narrative_overlay)
+
+	var shade := ColorRect.new()
+	shade.color = Color(TrainingThemeScript.INK, 0.88)
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	_narrative_overlay.add_child(shade)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.add_theme_constant_override("margin_left", 20)
+	center.add_theme_constant_override("margin_top", 20)
+	center.add_theme_constant_override("margin_right", 20)
+	center.add_theme_constant_override("margin_bottom", 20)
+	_narrative_overlay.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(640, 430)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override(
+		"panel",
+		TrainingThemeScript.make_panel_style(
+			TrainingThemeScript.PANEL,
+			TrainingThemeScript.GOLD,
+			14,
+			2
+		)
+	)
+	center.add_child(panel)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 18)
+	margin.add_theme_constant_override("margin_top", 16)
+	margin.add_theme_constant_override("margin_right", 18)
+	margin.add_theme_constant_override("margin_bottom", 16)
+	panel.add_child(margin)
+
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 9)
+	margin.add_child(content)
+	_narrative_meta = _make_label("", 10)
+	_narrative_meta.add_theme_color_override("font_color", TrainingThemeScript.MINT)
+	content.add_child(_narrative_meta)
+	_narrative_title = _make_label("", 22)
+	_narrative_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	content.add_child(_narrative_title)
+	_narrative_speaker = _make_label("", 12)
+	_narrative_speaker.add_theme_color_override("font_color", TrainingThemeScript.GOLD)
+	content.add_child(_narrative_speaker)
+	_narrative_body = _make_label("", 15)
+	_narrative_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_narrative_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_narrative_body.custom_minimum_size.y = 96
+	content.add_child(_narrative_body)
+	_narrative_result = _make_label("", 11)
+	_narrative_result.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_narrative_result.add_theme_color_override("font_color", TrainingThemeScript.CORAL)
+	content.add_child(_narrative_result)
+	var choice_scroll := ScrollContainer.new()
+	choice_scroll.custom_minimum_size.y = 110
+	choice_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	choice_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	choice_scroll.follow_focus = true
+	content.add_child(choice_scroll)
+	_narrative_choices = VBoxContainer.new()
+	_narrative_choices.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_narrative_choices.add_theme_constant_override("separation", 6)
+	choice_scroll.add_child(_narrative_choices)
+	_narrative_continue = Button.new()
+	_narrative_continue.text = "Continuar"
+	_narrative_continue.custom_minimum_size.y = 38
+	_narrative_continue.focus_mode = Control.FOCUS_ALL
+	_narrative_continue.pressed.connect(_on_narrative_continue_pressed)
+	content.add_child(_narrative_continue)
+
+
 func _make_progress_bar(maximum: int, fill_color: Color) -> ProgressBar:
 	var bar := ProgressBar.new()
 	bar.min_value = 0
@@ -533,6 +647,317 @@ func _make_label(text: String, font_size: int) -> Label:
 	label.text = text
 	label.add_theme_font_size_override("font_size", font_size)
 	return label
+
+
+func _process_narrative_flow() -> void:
+	if _state == null or _narrative_overlay == null or _narrative_overlay.visible:
+		return
+	var next_event: Dictionary = _narrative_service.get_next_event(_state)
+	if not next_event.is_empty():
+		_open_narrative_event(next_event)
+		return
+	if _narrative_service.is_mission_due(_state):
+		_open_mission_stage()
+		return
+	if (
+		_state.week == _service.get_total_weeks()
+		and _state.actions_remaining == 0
+		and _state.ending_id == &""
+	):
+		_show_campaign_ending()
+
+
+func _open_narrative_event(event: Dictionary) -> void:
+	_active_event = event
+	_active_dialogue = event["dialogue"]
+	_dialogue_index = 0
+	_narrative_body.custom_minimum_size.y = 96
+	_narrative_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_narrative_mode = &"event_dialogue"
+	_narrative_title.text = String(event["title"])
+	_narrative_meta.text = (
+		"CENA  ·  SEMANA %02d  ·  %s"
+		% [
+			_state.week,
+			_category_label(String(event["category"])).to_upper(),
+		]
+	)
+	_narrative_result.text = ""
+	_narrative_overlay.visible = true
+	_show_event_dialogue_line()
+
+
+func _show_event_dialogue_line() -> void:
+	if _dialogue_index < 0 or _dialogue_index >= _active_dialogue.size():
+		return
+	var line: Dictionary = _active_dialogue[_dialogue_index]
+	_narrative_speaker.text = _display_speaker(String(line["speaker"]))
+	_narrative_body.text = String(line["text"])
+	_narrative_continue.text = (
+		"Continuar fala"
+		if _dialogue_index < _active_dialogue.size() - 1
+		else "Ver escolhas"
+	)
+	_narrative_continue.visible = true
+	_clear_narrative_choices()
+
+
+func _show_event_choices() -> void:
+	_narrative_mode = &"event_choices"
+	_narrative_speaker.text = ""
+	_narrative_body.text = "Escolha como responder. A decisão não consome um bloco de treinamento."
+	_narrative_result.text = ""
+	_narrative_continue.visible = false
+	_clear_narrative_choices()
+	for choice: Dictionary in _active_event["choices"]:
+		_add_narrative_choice_button(
+			String(choice["label"]),
+			StringName(choice["id"])
+		)
+
+
+func _open_mission_stage() -> void:
+	_active_mission_stage = _narrative_service.get_current_mission_stage(_state)
+	if _active_mission_stage.is_empty():
+		return
+	_narrative_mode = &"mission_choices"
+	_narrative_body.custom_minimum_size.y = 0
+	_narrative_body.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	_narrative_title.text = String(_narrative_service.get_mission_title())
+	_narrative_meta.text = (
+		"MISSÃO  ·  ETAPA %d DE 3  ·  SEMANA %02d"
+		% [int(_active_mission_stage["stage"]), _state.week]
+	)
+	var context: String = ""
+	if int(_active_mission_stage["stage"]) == 1:
+		context = String(_narrative_service.get_mission_context()) + "\n\n"
+	_narrative_speaker.text = ""
+	_narrative_body.text = context + String(_active_mission_stage["objective"])
+	_narrative_result.text = (
+		"Os requisitos determinam resultados recuperáveis; nenhuma rolagem aleatória."
+	)
+	_narrative_continue.visible = false
+	_clear_narrative_choices()
+	for choice_id: StringName in _narrative_service.get_mission_choice_ids(_state):
+		var choice: Dictionary = _narrative_service.get_mission_choice(
+			_active_mission_stage,
+			choice_id
+		)
+		var preview: NarrativeResult = _narrative_service.preview_mission_choice(
+			_state,
+			choice_id
+		)
+		var choice_text: String = String(choice["label"])
+		choice_text += "\n" + preview.message
+		_add_narrative_choice_button(choice_text, choice_id)
+	_narrative_overlay.visible = true
+
+
+func _show_campaign_ending() -> void:
+	var ending: Dictionary = _narrative_service.resolve_ending(_state)
+	if ending.is_empty():
+		_feedback_label.text = "A campanha terminou, mas nenhum final elegível foi encontrado."
+		return
+	_state.ending_id = StringName(ending["id"])
+	_narrative_mode = &"ending"
+	_narrative_title.text = String(ending["title"])
+	_narrative_meta.text = "FIM DO SEMESTRE  ·  FINAL %s" % String(ending["tag"]).to_upper()
+	_narrative_speaker.text = "EPÍLOGO"
+	var ending_text := String(ending.get("epilogue_text", ""))
+	var consequences: Dictionary = ending.get("consequences", {})
+	for character_id: String in consequences:
+		ending_text += "\n\n%s — %s" % [
+			_display_speaker(character_id),
+			String(consequences[character_id]),
+		]
+	_narrative_body.text = ending_text
+	_narrative_result.text = String(ending.get("epilogue_note", ""))
+	_narrative_continue.text = "Fechar final"
+	_narrative_continue.visible = true
+	_clear_narrative_choices()
+	_narrative_overlay.visible = true
+
+
+func _add_narrative_choice_button(label_text: String, choice_id: StringName) -> void:
+	var button := Button.new()
+	button.custom_minimum_size.y = 58
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.focus_mode = Control.FOCUS_ALL
+	var inset := MarginContainer.new()
+	inset.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	inset.add_theme_constant_override("margin_left", 8)
+	inset.add_theme_constant_override("margin_top", 4)
+	inset.add_theme_constant_override("margin_right", 8)
+	inset.add_theme_constant_override("margin_bottom", 4)
+	inset.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	button.add_child(inset)
+	var label := _make_label(label_text, 11)
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	inset.add_child(label)
+	button.pressed.connect(_on_narrative_choice_pressed.bind(choice_id))
+	_narrative_choices.add_child(button)
+
+
+func _clear_narrative_choices() -> void:
+	for child: Node in _narrative_choices.get_children():
+		_narrative_choices.remove_child(child)
+		child.queue_free()
+
+
+func _on_narrative_choice_pressed(choice_id: StringName) -> void:
+	if _state == null:
+		return
+	var state_before: TrainingState = _state.duplicate_state()
+	var result: NarrativeResult
+	if _narrative_mode == &"event_choices":
+		result = _narrative_service.apply_event_choice(
+			_state,
+			StringName(_active_event["id"]),
+			choice_id
+		)
+	elif _narrative_mode == &"mission_choices":
+		result = _narrative_service.apply_mission_choice(_state, choice_id)
+	else:
+		return
+	if not result.is_valid:
+		_narrative_result.text = result.message
+		return
+	_narrative_mode = (
+		&"event_result"
+		if _narrative_mode == &"event_choices"
+		else &"mission_result"
+	)
+	_narrative_speaker.text = "RESULTADO"
+	_narrative_body.text = result.message
+	var changes: PackedStringArray = _format_narrative_changes(state_before, _state)
+	_narrative_result.text = (
+		"\n".join(changes)
+		if not changes.is_empty()
+		else "Nenhum atributo ou recurso mudou."
+	)
+	_clear_narrative_choices()
+	_narrative_continue.text = (
+		"Continuar"
+		if _narrative_mode == &"event_result"
+		else "Próxima etapa"
+	)
+	_narrative_continue.visible = true
+	_refresh_state()
+
+
+func _on_narrative_continue_pressed() -> void:
+	match _narrative_mode:
+		&"event_dialogue":
+			if _dialogue_index < _active_dialogue.size() - 1:
+				_dialogue_index += 1
+				_show_event_dialogue_line()
+			else:
+				_show_event_choices()
+		&"event_result":
+			_narrative_overlay.visible = false
+			_narrative_mode = &""
+			_active_event.clear()
+			_active_dialogue.clear()
+			_refresh_state()
+			_process_narrative_flow()
+		&"mission_result":
+			if _narrative_service.is_mission_due(_state):
+				_open_mission_stage()
+			else:
+				_narrative_overlay.visible = false
+				_narrative_mode = &""
+				_active_mission_stage.clear()
+				_refresh_state()
+				_process_narrative_flow()
+		&"ending":
+			_narrative_overlay.visible = false
+			_narrative_mode = &""
+
+
+func _format_narrative_changes(
+	before: TrainingState,
+	after: TrainingState
+) -> PackedStringArray:
+	var changes := PackedStringArray()
+	for stat_id: StringName in TrainingState.ATTRIBUTE_IDS:
+		_append_change(
+			changes,
+			STAT_LABELS[stat_id],
+			before.stats[stat_id],
+			after.stats[stat_id]
+		)
+	for axis_id: StringName in TrainingState.AXIS_IDS:
+		_append_change(
+			changes,
+			"[%s]" % String(axis_id),
+			before.axes[axis_id],
+			after.axes[axis_id]
+		)
+	_append_change(changes, "Energia", before.energy, after.energy)
+	_append_change(changes, "Estresse", before.stress, after.stress)
+	_append_change(changes, "Motivação", before.motivation, after.motivation)
+	_append_change(changes, "Créditos", before.credits, after.credits)
+	_append_change(changes, "Reputação", before.reputation, after.reputation)
+	for bond_id: StringName in before.bonds:
+		_append_change(
+			changes,
+			"Vínculo — %s" % _display_bond_name(bond_id),
+			before.bonds[bond_id],
+			after.bonds[bond_id]
+		)
+	for route_id: StringName in before.route_state:
+		var old_value: Variant = before.route_state[route_id]
+		var new_value: Variant = after.route_state[route_id]
+		if old_value != new_value:
+			changes.append("%s: %s → %s" % [
+				_route_state_label(route_id),
+				str(old_value),
+				str(new_value),
+			])
+	return changes
+
+
+func _route_state_label(route_id: StringName) -> String:
+	match route_id:
+		&"core_stability":
+			return "Estabilidade do núcleo"
+		&"echo_pressure":
+			return "Pressão da voz"
+		&"trusted_network":
+			return "Rede de confiança"
+		&"identification_aids":
+			return "Sistema de reconhecimento"
+		&"identification_aids_progress":
+			return "Progresso de reconhecimento"
+		&"honesty_to_friends":
+			return "Honestidade com amigas"
+		_:
+			return String(route_id)
+
+
+func _display_speaker(speaker_id: String) -> String:
+	match speaker_id:
+		"hori":
+			return "HORI"
+		"luppi":
+			return "LUPPI"
+		"ray":
+			return "RAY"
+		"instructor":
+			return "INSTRUTOR"
+		"echo":
+			return "VOZ"
+		"tama":
+			return "TAMA"
+		"friend2":
+			return "AMIGA"
+		"auditor":
+			return "AVALIADOR"
+		"researcher":
+			return "PESQUISADORA"
+		_:
+			return speaker_id.to_upper()
 
 
 func _on_activity_selected(activity_id: StringName) -> void:
@@ -633,6 +1058,7 @@ func _on_confirm_pressed() -> void:
 		_feedback_label.text = applied.message
 	else:
 		_feedback_label.text = "Treinamento aplicado. Foi consumido 1 bloco."
+	_process_narrative_flow()
 
 
 func _on_cancel_pressed() -> void:
@@ -663,6 +1089,7 @@ func _on_advance_week_pressed() -> void:
 	_confirm_button.disabled = true
 	_cancel_button.disabled = true
 	_refresh_state()
+	_process_narrative_flow()
 
 
 func _refresh_state() -> void:

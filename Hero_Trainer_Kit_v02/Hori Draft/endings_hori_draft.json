@@ -1,0 +1,94 @@
+{
+  "schema_version": 3,
+  "notes": "Rascunho para revisão do autor. Expande os quatro finais de Hori já existentes em data/endings.json (IDs preservados), com epílogos completos. Não sobrescreve o arquivo original nem os finais de Ray/Luppi.",
+  "endings": [
+    {
+      "id": "hori_guardian_command",
+      "character": "hori",
+      "priority": 40,
+      "title": "Comando sob controle",
+      "conditions": {
+        "all": [
+          { "path": "stats.pot", "op": ">=", "value": 55 },
+          { "path": "stats.res", "op": ">=", "value": 50 },
+          { "path": "resources.reputation", "op": ">=", "value": 35 },
+          { "path": "flags.final_mission_success", "op": "==", "value": true }
+        ]
+      },
+      "tag": "career",
+      "justification": "Representa o caminho de maior investimento técnico/físico e institucional. Não exige vínculos altos nem eixos específicos, então é alcançável mesmo por quem priorizou treino sobre relações.",
+      "how_to_reach": "Investir repetidamente em treinos de combate/condicionamento e protocolo de contenção (escolhas técnicas em hori_core_protocol_w03), manter boa reputação (ex.: hori_had_voice_in_review ou hori_traded_info_for_transparency) e concluir a missão do Observatório com sucesso.",
+      "epilogue_text": "Hori assume formalmente a liderança de protocolos de contenção da academia. É boa no que faz — melhor do que a maioria achava que seria. Nas reuniões, ninguém mais pergunta se ela aguenta o posto. A folha com seu nome na pasta de risco virou, com o tempo, uma folha de referência técnica. Ela ainda ri alto, ainda erra o nome de alguém de vez em quando e corrige rápido — mas boa parte da semana agora é ocupada por relatórios, simulações e comando, e as noites de jogo de cartas ficaram mais raras do que ela gostaria de admitir.",
+      "consequences": {
+        "hori": "Reconhecimento institucional sólido; competência inquestionável; vida social mais escassa, não extinta.",
+        "luppi": "Torna-se parceira tática recorrente em missões formais lideradas por Hori; a dinâmica profissional das duas se fortalece.",
+        "ray": "Segue carreira própria em paralelo; contato mantido, mas mais espaçado — nenhuma das duas trata isso como um afastamento definitivo."
+      }
+    },
+    {
+      "id": "hori_team_guardian",
+      "character": "hori",
+      "priority": 50,
+      "title": "Ninguém sozinha",
+      "conditions": {
+        "all": [
+          { "path": "axes.solidarity", "op": ">=", "value": 15 },
+          { "path": "bonds.luppi", "op": ">=", "value": 45 },
+          { "path": "bonds.ray", "op": ">=", "value": 45 },
+          { "path": "flags.final_mission_success", "op": "==", "value": true }
+        ]
+      },
+      "tag": "personal",
+      "justification": "Prioridade mais alta entre os quatro por representar o equilíbrio mais completo entre competência, vínculo e honestidade relativa — o desfecho mais 'quente' da rota.",
+      "how_to_reach": "Fortalecer os vínculos com Luppi (hori_opened_up_to_luppi) e Ray (hori_credited_ray_publicly ou hori_opened_up_to_ray), manter escolhas solidárias nos eventos de mundo, e concluir a missão com sucesso, preferencialmente com stage2_split_team ou stage2_core_stabilized.",
+      "epilogue_text": "Hori continua na linha de frente, mas o protocolo dela, na prática, deixou de ser só dela. Luppi cobre a retaguarda tática sem precisar perguntar; Ray está por perto nos momentos em que o núcleo pesa mais do que o normal. Ninguém trata isso como fraqueza — virou só o jeito como elas trabalham. Hori ainda esconde coisas, de vez em quando, porque é assim que ela é; mas esconde menos do que escondia, e quando alguém nota, ela não finge que não notou de volta.",
+      "consequences": {
+        "hori": "Núcleo mais estável por causa da rede de apoio, não apesar dela; identidade social preservada e reforçada.",
+        "luppi": "Parceira fixa de missão; a confiança mútua vira rotina, não exceção.",
+        "ray": "Vínculo consolidado; a amizade das três se torna conhecida informalmente na academia como referência de trabalho em equipe."
+      }
+    },
+    {
+      "id": "hori_independent",
+      "character": "hori",
+      "priority": 30,
+      "title": "Com as próprias regras",
+      "conditions": {
+        "all": [
+          { "path": "axes.autonomy", "op": ">=", "value": 15 },
+          { "path": "flags.final_mission_attempted", "op": "==", "value": true }
+        ]
+      },
+      "tag": "personal",
+      "justification": "Não exige sucesso na missão nem vínculos altos — reflete um caminho de autodeterminação que pode coexistir com relações mais distantes ou com um resultado de missão imperfeito.",
+      "how_to_reach": "Priorizar escolhas de autonomia ao longo da campanha (hori_core_agency, hori_private_conversation, hori_engaged_echo, hori_kept_distance_tactical) e ao menos tentar a missão do Observatório.",
+      "epilogue_text": "Hori negocia, aos poucos, um jeito próprio de lidar com tudo isso — menos reunião formal, mais decisão na hora. Ela ainda escolhe quando se expor e quando não, mas agora é escolha, não reflexo automático de desviar do assunto. A academia aprende a lidar com uma cadete que não segue o roteiro inteiro, e, pra surpresa de alguns, funciona. Não é isolamento — é ela decidindo os próprios termos, inclusive os termos de quando pedir ajuda.",
+      "consequences": {
+        "hori": "Controle real sobre a própria narrativa; relação com a estrutura de comando mais distante, mas respeitosa.",
+        "luppi": "Vínculo varia conforme escolhas anteriores; permanece como presença constante, só que com menos planejamento conjunto formal.",
+        "ray": "Vínculo varia conforme escolhas anteriores; contato segue, com respeito mútuo pelo espaço de cada uma."
+      }
+    },
+    {
+      "id": "hori_overburdened",
+      "character": "hori",
+      "priority": 10,
+      "title": "O peso que ela carrega sorrindo",
+      "conditions": {
+        "all": [
+          { "path": "flags.final_mission_attempted", "op": "==", "value": true }
+        ]
+      },
+      "tag": "fallback",
+      "justification": "Fallback garantido: qualquer campanha que chegue à missão intermediária, mesmo sem atingir os limiares dos outros três finais, recebe este desfecho. Agridoce por definição, nunca punitivo em relação a traços canônicos de Hori.",
+      "how_to_reach": "Resultado padrão quando nenhuma das três condições anteriores é satisfeita — tipicamente associado a escolhas como hori_hid_echo_event, hori_moved_on_quickly e baixa pontuação geral de eixos/vínculos.",
+      "epilogue_text": "Hori segue em frente. Continua sorrindo, continua competente, continua sendo a primeira a fazer piada numa sala tensa. Só que boa parte do que ela carrega nunca chegou a aparecer pra ninguém — não porque ninguém se importasse, mas porque ela nunca deixou aparecer. O jogo termina sem tragédia: ela está bem o suficiente pra continuar. Só não está necessariamente bem.",
+      "consequences": {
+        "hori": "Sustenta a própria rotina sem colapsar, mas sem rede de apoio totalmente ciente do que ela enfrenta.",
+        "luppi": "Permanece presente, mas com acesso limitado ao que Hori realmente sente — a amizade segue, incompleta.",
+        "ray": "Permanece presente, mas na mesma condição de acesso limitado; nenhuma das duas rompe o vínculo, só não o aprofundam."
+      },
+      "epilogue_note": "Este final e explicitamente nao uma punicao por Hori ouvir a voz ou ter dificuldade de reconhecimento facial; e consequencia especifica de ocultacao repetida de informacao, reversivel em uma eventual continuacao."
+    }
+  ]
+}

@@ -1,0 +1,201 @@
+{
+  "schema_version": 1,
+  "notes": "Rascunho para revisão do autor. Mission_id compatível com shared_mission_w08 já existente em data/events.json. Não sobrescreve arquivos existentes.",
+  "missions": [
+    {
+      "mission_id": "observatory_rescue",
+      "campaign": "hori",
+      "title": "Observatório Silencioso",
+      "window": { "week_min": 8, "week_max": 8 },
+      "context": "Uma Ruptura isolada se abre perto de um posto de observação da academia, com pesquisadores presos dentro. Hori, Luppi e Ray são destacadas para a operação.",
+      "special_ability": {
+        "id": "hori_containment_pulse",
+        "name": "Pulso de Contenção",
+        "owner": "hori",
+        "unlock_condition": {
+          "any": [
+            { "path": "route_state.core_stability", "op": ">=", "value": 55 },
+            { "path": "flags.hori_core_team_protocol", "op": "==", "value": true }
+          ]
+        },
+        "effect": "Disponível apenas na Etapa 2. Permite a Hori usar o núcleo de forma controlada para estabilizar a Ruptura diretamente. Alto risco / alto ganho: sucesso reduz drasticamente o dano à equipe e aumenta trusted_network; falha reduz core_stability temporariamente e aumenta echo_pressure.",
+        "success_chance_note": "Determinado pelo motor com base em core_stability e tec no momento da escolha; não detalhado aqui para evitar código executável no JSON."
+      },
+      "stages": [
+        {
+          "stage": 1,
+          "id": "observatory_stage1_recon",
+          "title": "Reconhecimento",
+          "objective": "Avaliar o perímetro, entender a escala da Ruptura e decidir a abordagem de entrada.",
+          "requirements_note": "Nenhum requisito bloqueante; opções variam em risco conforme atributos.",
+          "choices": [
+            {
+              "id": "fast_advance",
+              "label": "Avançar rápido para alcançar os pesquisadores o quanto antes.",
+              "requirement": { "path": "stats.pot", "op": ">=", "value": 30 },
+              "expected_result": "Economiza tempo, mas entra com menos informação sobre a Ruptura.",
+              "effects_success": {
+                "flags_set": { "stage1_fast_advance": true },
+                "resources_delta": { "stress": 4 }
+              },
+              "effects_failure_recoverable": {
+                "route_state_delta": { "core_stability": -5 },
+                "flags_set": { "stage1_fast_advance_costly": true }
+              }
+            },
+            {
+              "id": "cautious_scan",
+              "label": "Avançar com cautela, mapeando a instabilidade antes de agir.",
+              "requirement": { "path": "stats.teo", "op": ">=", "value": 30 },
+              "expected_result": "Mais informação disponível para a Etapa 2, custo de tempo.",
+              "effects_success": {
+                "flags_set": { "stage1_cautious_scan": true },
+                "route_state_delta": { "core_stability": 3 }
+              },
+              "effects_failure_recoverable": {
+                "resources_delta": { "stress": 6 },
+                "flags_set": { "stage1_scan_incomplete": true }
+              }
+            },
+            {
+              "id": "call_backup",
+              "label": "Pedir reforço institucional antes de entrar.",
+              "requirement": { "path": "resources.reputation", "op": ">=", "value": 15 },
+              "expected_result": "Operação mais segura, mas a academia passa a acompanhar de perto.",
+              "effects_success": {
+                "flags_set": { "stage1_called_backup": true },
+                "resources_delta": { "reputation": 2 }
+              },
+              "effects_failure_recoverable": {
+                "flags_set": { "stage1_backup_denied": true },
+                "resources_delta": { "stress": 3 }
+              }
+            }
+          ],
+          "flags_persistent": ["stage1_fast_advance", "stage1_cautious_scan", "stage1_called_backup"]
+        },
+        {
+          "stage": 2,
+          "id": "observatory_stage2_core_action",
+          "title": "Ação central",
+          "objective": "Decidir como lidar com a Ruptura ativa: estabilizar com o núcleo de Hori, priorizar a extração dos pesquisadores, ou dividir a equipe.",
+          "requirements_note": "A opção 'containment_pulse' só aparece se a habilidade especial estiver desbloqueada (ver special_ability).",
+          "choices": [
+            {
+              "id": "stabilize_with_core",
+              "label": "Estabilizar a Ruptura de perto usando o núcleo de Hori.",
+              "requirement": { "path": "route_state.core_stability", "op": ">=", "value": 40 },
+              "expected_result": "Reduz o dano geral à Ruptura, mas expõe Hori diretamente ao risco físico.",
+              "effects_success": {
+                "flags_set": { "stage2_core_stabilized": true },
+                "route_state_delta": { "core_stability": 5 },
+                "route_state_delta_team": { "trusted_network": 6 }
+              },
+              "effects_failure_recoverable": {
+                "route_state_delta": { "core_stability": -10, "echo_pressure": 6 },
+                "flags_set": { "stage2_core_strained": true }
+              }
+            },
+            {
+              "id": "prioritize_extraction",
+              "label": "Priorizar a extração dos pesquisadores primeiro.",
+              "requirement": { "path": "stats.res", "op": ">=", "value": 30 },
+              "expected_result": "Pesquisadores protegidos com mais segurança, Ruptura permanece ativa por mais tempo.",
+              "effects_success": {
+                "flags_set": { "stage2_extraction_priority": true },
+                "resources_delta": { "reputation": 3 }
+              },
+              "effects_failure_recoverable": {
+                "resources_delta": { "stress": 6 },
+                "flags_set": { "stage2_extraction_delayed": true }
+              }
+            },
+            {
+              "id": "split_team",
+              "label": "Dividir a equipe entre as duas tarefas.",
+              "requirement": { "path": "bonds.luppi", "op": ">=", "value": 20 },
+              "expected_result": "Tenta os dois objetivos ao mesmo tempo; exige coordenação com Luppi.",
+              "effects_success": {
+                "flags_set": { "stage2_split_team": true },
+                "bonds_delta": { "luppi": 5 }
+              },
+              "effects_failure_recoverable": {
+                "resources_delta": { "stress": 8 },
+                "flags_set": { "stage2_split_strained": true }
+              }
+            },
+            {
+              "id": "containment_pulse",
+              "label": "[Habilidade especial] Usar o Pulso de Contenção.",
+              "requirement": { "path": "flags.hori_containment_pulse_unlocked", "op": "==", "value": true },
+              "expected_result": "Alto risco, alto ganho — ver special_ability.",
+              "effects_success": {
+                "flags_set": { "stage2_pulse_success": true },
+                "route_state_delta": { "trusted_network": 10 },
+                "resources_delta": { "stress": -4 }
+              },
+              "effects_failure_recoverable": {
+                "route_state_delta": { "core_stability": -12, "echo_pressure": 8 },
+                "flags_set": { "stage2_pulse_failed": true }
+              }
+            }
+          ],
+          "flags_persistent": ["stage2_core_stabilized", "stage2_extraction_priority", "stage2_split_team", "stage2_pulse_success"]
+        },
+        {
+          "stage": 3,
+          "id": "observatory_stage3_extraction",
+          "title": "Extração",
+          "objective": "Concluir a operação, proteger os envolvidos e sair da área.",
+          "requirements_note": "Opções e custo variam conforme flags das etapas 1 e 2.",
+          "choices": [
+            {
+              "id": "clean_exit",
+              "label": "Buscar uma saída limpa, coordenando com quem já está estável.",
+              "requirement": { "path": "route_state.trusted_network", "op": ">=", "value": 30 },
+              "expected_result": "Saída organizada, sem feridos, se a equipe já estiver em boas condições.",
+              "effects_success": {
+                "flags_set": { "final_mission_success": true, "final_mission_attempted": true },
+                "resources_delta": { "reputation": 4 }
+              },
+              "effects_failure_recoverable": {
+                "flags_set": { "final_mission_attempted": true, "stage3_minor_injury": true },
+                "resources_delta": { "stress": 5 }
+              }
+            },
+            {
+              "id": "cover_retreat",
+              "label": "Cobrir a retirada da equipe, aceitando maior desgaste pessoal.",
+              "requirement": { "path": "stats.res", "op": ">=", "value": 30 },
+              "expected_result": "Equipe sai protegida, Hori absorve mais do custo físico/emocional.",
+              "effects_success": {
+                "flags_set": { "final_mission_success": true, "final_mission_attempted": true },
+                "route_state_delta": { "core_stability": -5 }
+              },
+              "effects_failure_recoverable": {
+                "flags_set": { "final_mission_attempted": true, "stage3_costly_exit": true },
+                "route_state_delta": { "core_stability": -10 }
+              }
+            },
+            {
+              "id": "negotiate_support",
+              "label": "Negociar apoio institucional de última hora para a extração.",
+              "requirement": { "path": "resources.reputation", "op": ">=", "value": 20 },
+              "expected_result": "Extração mais segura, mas aumenta a exposição institucional de Hori.",
+              "effects_success": {
+                "flags_set": { "final_mission_success": true, "final_mission_attempted": true },
+                "resources_delta": { "reputation": 2 }
+              },
+              "effects_failure_recoverable": {
+                "flags_set": { "final_mission_attempted": true, "stage3_institutional_exposure": true }
+              }
+            }
+          ],
+          "flags_persistent": ["final_mission_success", "final_mission_attempted"]
+        }
+      ],
+      "failure_policy": "Nenhuma opção de etapa resulta em fracasso irreparável; toda falha é recuperável e aplicada via effects_failure_recoverable, preservando flags_persistent de final_mission_attempted mesmo quando final_mission_success não é atingido.",
+      "continuity_check": "Preparo (atributos/route_state) e relações (bonds) determinam requisitos e resultados; nenhuma etapa depende de rolagem aleatória isolada sem base em decisões anteriores."
+    }
+  ]
+}

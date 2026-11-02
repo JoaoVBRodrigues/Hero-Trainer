@@ -149,20 +149,30 @@ func load_data(character_data: Variant, activities_data: Variant) -> bool:
 
 	var stats_value: Variant = character.get("stats")
 	var resources_value: Variant = character.get("resources")
+	var axes_value: Variant = character.get("axes")
 	var bonds_value: Variant = character.get("bonds")
+	var route_state_value: Variant = character.get("route_state")
 	if typeof(stats_value) != TYPE_DICTIONARY:
 		push_error("Os atributos iniciais de Hori estão ausentes ou inválidos.")
 		return false
 	if typeof(resources_value) != TYPE_DICTIONARY:
 		push_error("Os recursos iniciais de Hori estão ausentes ou inválidos.")
 		return false
+	if typeof(axes_value) != TYPE_DICTIONARY:
+		push_error("Os eixos iniciais de Hori estão ausentes ou inválidos.")
+		return false
 	if typeof(bonds_value) != TYPE_DICTIONARY:
 		push_error("Os vínculos iniciais de Hori estão ausentes ou inválidos.")
+		return false
+	if typeof(route_state_value) != TYPE_DICTIONARY:
+		push_error("O estado narrativo inicial de Hori está ausente ou inválido.")
 		return false
 
 	var stats_data: Dictionary = stats_value
 	var resources_data: Dictionary = resources_value
+	var axes_data: Dictionary = axes_value
 	var bonds_data: Dictionary = bonds_value
+	var route_state_data: Dictionary = route_state_value
 	var activities_root: Dictionary = activities_data
 	if not _validate_allowed_keys(
 		activities_root,
@@ -229,6 +239,53 @@ func load_data(character_data: Variant, activities_data: Variant) -> bool:
 			push_error("O atributo '%s' de Hori está fora dos limites." % stat_key)
 			return false
 		initial_state.stats[stat_id] = stat_value
+
+	if not _validate_allowed_keys(
+		axes_data,
+		["autonomy", "solidarity", "ambition", "integrity"],
+		"eixos de Hori"
+	):
+		return false
+	for axis_id: StringName in TrainingState.AXIS_IDS:
+		var axis_key: String = String(axis_id)
+		if not _has_integer(axes_data, axis_key, "eixos de Hori"):
+			return false
+		var axis_value: int = int(axes_data[axis_key])
+		if axis_value < TrainingState.AXIS_MIN or axis_value > TrainingState.AXIS_MAX:
+			push_error("O eixo '%s' de Hori está fora dos limites." % axis_key)
+			return false
+		initial_state.axes[axis_id] = axis_value
+
+	if not _validate_allowed_keys(
+		route_state_data,
+		[
+			"core_stability", "echo_pressure", "trusted_network",
+			"identification_aids", "identification_aids_progress",
+			"honesty_to_friends",
+		],
+		"route_state de Hori"
+	):
+		return false
+	for route_key: StringName in TrainingState.ROUTE_STATE_LIMITS:
+		var key: String = String(route_key)
+		if route_state_data.has(key):
+			if not _has_integer(route_state_data, key, "route_state de Hori"):
+				return false
+			var bounds: Vector2i = TrainingState.ROUTE_STATE_LIMITS[route_key]
+			var route_value: int = int(route_state_data[key])
+			if route_value < bounds.x or route_value > bounds.y:
+				push_error("O campo '%s' de route_state está fora dos limites." % key)
+				return false
+			initial_state.route_state[route_key] = route_value
+		elif route_key != &"identification_aids_progress":
+			push_error("O campo '%s' está ausente em route_state de Hori." % key)
+			return false
+	for route_key: StringName in TrainingState.ROUTE_STATE_BOOLEAN_IDS:
+		var key: String = String(route_key)
+		if not route_state_data.has(key) or typeof(route_state_data[key]) != TYPE_BOOL:
+			push_error("O campo '%s' em route_state de Hori precisa ser booleano." % key)
+			return false
+		initial_state.route_state[route_key] = route_state_data[key]
 
 	if not _validate_allowed_keys(
 		resources_data,
@@ -579,6 +636,31 @@ func _validate_state(state: TrainingState) -> String:
 		var bond_value: int = state.bonds[bond_id]
 		if bond_value < 0 or bond_value > _bond_cap:
 			return "O vínculo '%s' está fora dos limites." % bond_id
+	if state.axes.size() != TrainingState.AXIS_IDS.size():
+		return "O conjunto de eixos do estado está inválido."
+	for axis_id: StringName in TrainingState.AXIS_IDS:
+		if not state.axes.has(axis_id):
+			return "O eixo '%s' está ausente no estado." % axis_id
+		var axis_value: int = state.axes[axis_id]
+		if axis_value < TrainingState.AXIS_MIN or axis_value > TrainingState.AXIS_MAX:
+			return "O eixo '%s' está fora dos limites." % axis_id
+	if state.route_state.size() != TrainingState.ROUTE_STATE_LIMITS.size() + 1:
+		return "O conjunto route_state do estado está inválido."
+	for route_id: StringName in TrainingState.ROUTE_STATE_LIMITS:
+		if not state.route_state.has(route_id):
+			return "O campo '%s' está ausente em route_state." % route_id
+		var route_value: Variant = state.route_state[route_id]
+		if typeof(route_value) != TYPE_INT:
+			return "O campo '%s' de route_state precisa ser inteiro." % route_id
+		var bounds: Vector2i = TrainingState.ROUTE_STATE_LIMITS[route_id]
+		if int(route_value) < bounds.x or int(route_value) > bounds.y:
+			return "O campo '%s' de route_state está fora dos limites." % route_id
+	for route_id: StringName in TrainingState.ROUTE_STATE_BOOLEAN_IDS:
+		if (
+			not state.route_state.has(route_id)
+			or typeof(state.route_state[route_id]) != TYPE_BOOL
+		):
+			return "O campo '%s' de route_state precisa ser booleano." % route_id
 	return ""
 
 
