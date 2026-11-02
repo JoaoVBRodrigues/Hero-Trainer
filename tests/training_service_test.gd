@@ -6,7 +6,7 @@ var _failures: int = 0
 var _assertions: int = 0
 
 
-func _init() -> void:
+func _initialize() -> void:
 	call_deferred("_run_tests")
 
 
@@ -26,6 +26,11 @@ func _run_tests() -> void:
 	_test_insufficient_energy_rejection(service)
 	_test_unavailable_activity_preview(service)
 	_test_week_advancement(service)
+	_test_eight_configured_activities(service)
+	_test_new_activity_effects(service)
+	_test_credits_reputation_and_bonds(service)
+	_test_resource_persistence_between_weeks(service)
+	_test_expanded_caps_and_invalid_data(service)
 	_finish()
 
 
@@ -36,6 +41,10 @@ func _test_configuration_comes_from_json(service: TrainingService) -> void:
 	_check(service.get_attribute_cap() == 100, "attribute cap comes from activities JSON")
 	_check(service.get_resource_cap() == 100, "resource cap comes from activities JSON")
 	_check(state.actions_remaining == service.get_actions_per_week(), "initial action count uses JSON")
+	_check(state.credits == 50, "initial credits come from character JSON")
+	_check(state.reputation == 20, "initial reputation comes from character JSON")
+	_check(state.bonds[&"ray"] == 30, "Ray bond comes from character JSON")
+	_check(state.bonds[&"luppi"] == 25, "Luppi bond comes from character JSON")
 
 
 func _test_activity_effects(service: TrainingService) -> void:
@@ -105,6 +114,9 @@ func _test_preview_matches_applied_result(service: TrainingService) -> void:
 		and preview.result.energy == state.energy
 		and preview.result.stress == state.stress
 		and preview.result.motivation == state.motivation
+		and preview.result.credits == state.credits
+		and preview.result.reputation == state.reputation
+		and preview.result.bonds == state.bonds
 		and preview.result.actions_remaining == state.actions_remaining,
 		"preview matches the applied result"
 	)
@@ -193,7 +205,103 @@ func _state_snapshot(state: TrainingState) -> Dictionary:
 		"energy": state.energy,
 		"stress": state.stress,
 		"motivation": state.motivation,
+		"credits": state.credits,
+		"reputation": state.reputation,
+		"bonds": state.bonds.duplicate(),
 	}
+
+
+func _test_eight_configured_activities(service: TrainingService) -> void:
+	var activity_ids: Array[StringName] = service.get_activity_ids()
+	_check(activity_ids.size() == 8, "all eight JSON activities load")
+	for activity_id: StringName in [
+		&"combat", &"lab", &"control", &"conditioning", &"rest",
+		&"internship", &"bond_ray", &"bond_luppi",
+	]:
+		_check(activity_ids.has(activity_id), "activity %s is configured" % activity_id)
+
+
+func _test_new_activity_effects(service: TrainingService) -> void:
+	var state: TrainingState = service.create_initial_state()
+	var lab: TrainingPreview = service.apply_activity(state, &"lab")
+	_check(lab.is_valid, "laboratory study applies")
+	_check(state.stats[&"teo"] == 43 and state.stats[&"sin"] == 42, "laboratory deltas apply")
+	_check(state.energy == 65 and state.stress == 16, "laboratory resource deltas apply")
+
+	var conditioning: TrainingPreview = service.apply_activity(state, &"conditioning")
+	_check(conditioning.is_valid, "conditioning applies")
+	_check(
+		state.stats[&"res"] == 39 and state.stats[&"pot"] == 31,
+		"conditioning stat deltas apply"
+	)
+	_check(state.energy == 52 and state.stress == 19, "conditioning resource deltas apply")
+
+
+func _test_credits_reputation_and_bonds(service: TrainingService) -> void:
+	var state: TrainingState = service.create_initial_state()
+	var internship: TrainingPreview = service.apply_activity(state, &"internship")
+	_check(internship.is_valid, "internship applies")
+	_check(state.credits == 75 and state.reputation == 21, "internship grants configured rewards")
+	_check(state.energy == 67 and state.stress == 16, "internship energy and stress deltas apply")
+
+	state.energy = 0
+	var ray_result: TrainingPreview = service.apply_activity(state, &"bond_ray")
+	_check(ray_result.is_valid, "Ray conversation is available at zero energy")
+	_check(state.bonds[&"ray"] == 38, "Ray bond increases independently")
+	_check(state.bonds[&"luppi"] == 25, "Ray conversation does not change Luppi bond")
+	var luppi_result: TrainingPreview = service.apply_activity(state, &"bond_luppi")
+	_check(luppi_result.is_valid, "time with Luppi is available at zero energy")
+	_check(state.bonds[&"luppi"] == 33, "Luppi bond increases independently")
+	_check(state.bonds[&"ray"] == 38, "Luppi time does not change Ray bond")
+
+
+func _test_resource_persistence_between_weeks(service: TrainingService) -> void:
+	var state: TrainingState = service.create_initial_state()
+	state.credits = 1234
+	state.reputation = 77
+	state.bonds[&"ray"] = 58
+	state.bonds[&"luppi"] = 63
+	for action_index: int in range(service.get_actions_per_week()):
+		_check(service.apply_activity(state, &"rest").is_valid, "week-closing rest applies")
+	var credits_before: int = state.credits
+	var reputation_before: int = state.reputation
+	var bonds_before: Dictionary = state.bonds.duplicate()
+	_check(service.advance_week(state), "advance week after all actions")
+	_check(state.credits == credits_before, "credits persist after advancing week")
+	_check(state.reputation == reputation_before, "reputation persists after advancing week")
+	_check(state.bonds == bonds_before, "all bonds persist after advancing week")
+
+
+func _test_expanded_caps_and_invalid_data(service: TrainingService) -> void:
+	var state: TrainingState = service.create_initial_state()
+	state.bonds[&"ray"] = service.get_bond_cap() - 1
+	state.reputation = service.get_reputation_cap()
+	var ray_preview: TrainingPreview = service.preview_activity(state, &"bond_ray")
+	_check(ray_preview.is_valid, "relationship remains valid near its cap")
+	_check(ray_preview.result.bonds[&"ray"] == service.get_bond_cap(), "bond gain respects cap")
+	_check(ray_preview.result.reputation == service.get_reputation_cap(), "reputation respects cap")
+	state.credits = 150
+	var internship: TrainingPreview = service.apply_activity(state, &"internship")
+	_check(internship.is_valid, "internship remains available with credits above 100")
+	_check(state.credits == 175, "credits accumulate above the generic resource cap")
+
+	var initial_character_data: Variant = JSON.parse_string(
+		FileAccess.get_file_as_string("res://Hero_Trainer_Kit_v02/data/characters.json")
+	)
+	var invalid_activities_data: Variant = JSON.parse_string(
+		FileAccess.get_file_as_string("res://Hero_Trainer_Kit_v02/data/activities.json")
+	)
+	invalid_activities_data["unexpected_key"] = true
+	_check(
+		not service.load_data(initial_character_data, invalid_activities_data),
+		"unknown JSON keys are rejected"
+	)
+	var preserved_state: TrainingState = service.create_initial_state()
+	_check(preserved_state.credits == 50, "invalid reload does not partially replace loaded state")
+	_check(
+		service.apply_activity(preserved_state, &"rest").is_valid,
+		"valid loaded data remains usable after invalid reload"
+	)
 
 
 func _test_week_advancement(service: TrainingService) -> void:
@@ -208,17 +316,24 @@ func _test_week_advancement(service: TrainingService) -> void:
 		"new week restores the JSON action count"
 	)
 
-	state.week = service.get_total_weeks()
-	for action_index: int in range(service.get_actions_per_week()):
-		service.apply_activity(state, &"rest")
-	_check(not service.advance_week(state), "campaign does not advance past its JSON week limit")
+	var campaign: TrainingState = service.create_initial_state()
+	for week_number: int in range(1, service.get_total_weeks() + 1):
+		for action_index: int in range(service.get_actions_per_week()):
+			_check(
+				service.apply_activity(campaign, &"rest").is_valid,
+				"week %d action %d applies" % [week_number, action_index + 1]
+			)
+		if week_number < service.get_total_weeks():
+			_check(service.advance_week(campaign), "campaign advances after week %d" % week_number)
+			_check(campaign.week == week_number + 1, "campaign enters week %d" % (week_number + 1))
+		else:
+			_check(campaign.week == 16, "campaign reaches the configured final week")
+			_check(not service.advance_week(campaign), "campaign cannot advance beyond week 16")
 
 
 func _check(condition: bool, description: String) -> void:
 	_assertions += 1
-	if condition:
-		print("PASS: %s" % description)
-	else:
+	if not condition:
 		_failures += 1
 		push_error("FAIL: %s" % description)
 

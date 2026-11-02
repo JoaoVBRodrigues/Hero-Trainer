@@ -24,6 +24,7 @@ var _activity_buttons: Dictionary[StringName, Button] = {}
 var _stat_labels: Dictionary[StringName, Label] = {}
 var _resource_bars: Dictionary[StringName, ProgressBar] = {}
 var _resource_values: Dictionary[StringName, Label] = {}
+var _credits_value: Label
 var _advance_button: Button
 
 
@@ -50,9 +51,15 @@ func _build_interface() -> void:
 	margin.add_theme_constant_override("margin_bottom", 24)
 	add_child(margin)
 
+	var scroll: ScrollContainer = ScrollContainer.new()
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	margin.add_child(scroll)
+
 	var content: VBoxContainer = VBoxContainer.new()
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	content.add_theme_constant_override("separation", 16)
-	margin.add_child(content)
+	scroll.add_child(content)
 
 	var header: HBoxContainer = HBoxContainer.new()
 	content.add_child(header)
@@ -79,17 +86,37 @@ func _build_interface() -> void:
 	_add_resource_row(content, &"energy", "Energia", Color(0.35, 0.72, 0.86))
 	_add_resource_row(content, &"stress", "Estresse", Color(0.88, 0.55, 0.39))
 	_add_resource_row(content, &"motivation", "Motivação", Color(0.55, 0.75, 0.48))
+	_add_text_row(content, "Créditos")
+	_add_progress_row(
+		content,
+		&"reputation",
+		"Reputação",
+		_service.get_reputation_cap(),
+		Color(0.78, 0.68, 0.34)
+	)
+	for bond_id: StringName in _service.get_bond_ids():
+		_add_progress_row(
+			content,
+			bond_id,
+			"Vínculo — %s" % _display_bond_name(bond_id),
+			_service.get_bond_cap(),
+			Color(0.68, 0.55, 0.82)
+		)
 
 	content.add_child(_make_label("Escolha uma atividade", 18))
-	var activities_row: HBoxContainer = HBoxContainer.new()
-	activities_row.add_theme_constant_override("separation", 12)
-	content.add_child(activities_row)
+	var activities_grid: GridContainer = GridContainer.new()
+	activities_grid.columns = 2
+	activities_grid.add_theme_constant_override("h_separation", 12)
+	activities_grid.add_theme_constant_override("v_separation", 8)
+	content.add_child(activities_grid)
 	for activity_id: StringName in _service.get_activity_ids():
 		var button: Button = Button.new()
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		button.custom_minimum_size = Vector2(0, 64)
+		button.custom_minimum_size = Vector2(0, 72)
 		button.pressed.connect(_on_activity_selected.bind(activity_id))
-		activities_row.add_child(button)
+		button.text = _format_activity_button(activity_id)
+		button.tooltip_text = _service.get_activity_category(activity_id)
+		activities_grid.add_child(button)
 		_activity_buttons[activity_id] = button
 
 	_actions_label = _make_label("", 16)
@@ -138,6 +165,22 @@ func _add_resource_row(
 	label_text: String,
 	bar_color: Color
 ) -> void:
+	_add_progress_row(
+		parent,
+		resource_id,
+		label_text,
+		_service.get_resource_cap(),
+		bar_color
+	)
+
+
+func _add_progress_row(
+	parent: VBoxContainer,
+	resource_id: StringName,
+	label_text: String,
+	max_value: int,
+	bar_color: Color
+) -> void:
 	var row: HBoxContainer = HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
 	parent.add_child(row)
@@ -147,7 +190,7 @@ func _add_resource_row(
 
 	var bar: ProgressBar = ProgressBar.new()
 	bar.min_value = 0
-	bar.max_value = _service.get_resource_cap()
+	bar.max_value = max_value
 	bar.show_percentage = false
 	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var fill_style: StyleBoxFlat = StyleBoxFlat.new()
@@ -156,11 +199,58 @@ func _add_resource_row(
 	row.add_child(bar)
 	_resource_bars[resource_id] = bar
 
-	var value_label: Label = _make_label("", 14)
-	value_label.custom_minimum_size = Vector2(56, 0)
-	value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	row.add_child(value_label)
-	_resource_values[resource_id] = value_label
+	var display_value: Label = _make_label("", 14)
+	display_value.custom_minimum_size = Vector2(56, 0)
+	display_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	row.add_child(display_value)
+	_resource_values[resource_id] = display_value
+
+
+func _add_text_row(parent: VBoxContainer, label_text: String) -> void:
+	var row: HBoxContainer = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	parent.add_child(row)
+	var label: Label = _make_label(label_text, 14)
+	label.custom_minimum_size = Vector2(120, 0)
+	row.add_child(label)
+	_credits_value = _make_label("0", 14)
+	_credits_value.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_credits_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	row.add_child(_credits_value)
+
+
+func _display_bond_name(bond_id: StringName) -> String:
+	match bond_id:
+		&"ray":
+			return "Ray"
+		&"luppi":
+			return "Luppi"
+		&"instructor":
+			return "Instrutor"
+		_:
+			return String(bond_id)
+
+
+func _format_activity_button(activity_id: StringName) -> String:
+	return "%s\n%s · Energia: %d" % [
+		_service.get_activity_label(activity_id),
+		_category_label(_service.get_activity_category(activity_id)),
+		_service.get_activity_energy_cost(activity_id),
+	]
+
+
+func _category_label(category: String) -> String:
+	match category:
+		"training":
+			return "Treino"
+		"recovery":
+			return "Recuperação"
+		"work":
+			return "Trabalho"
+		"relationship":
+			return "Relacionamento"
+		_:
+			return category
 
 
 func _make_label(text: String, font_size: int) -> Label:
@@ -237,6 +327,10 @@ func _refresh_state() -> void:
 	_set_resource_display(&"energy", _state.energy)
 	_set_resource_display(&"stress", _state.stress)
 	_set_resource_display(&"motivation", _state.motivation)
+	_credits_value.text = str(_state.credits)
+	_set_resource_display(&"reputation", _state.reputation)
+	for bond_id: StringName in _state.bonds:
+		_set_resource_display(bond_id, _state.bonds[bond_id])
 	var has_actions: bool = _state.actions_remaining > 0
 	_set_activity_buttons_enabled(has_actions)
 	_advance_button.visible = (
@@ -246,10 +340,13 @@ func _refresh_state() -> void:
 
 
 func _set_resource_display(resource_id: StringName, value: int) -> void:
+	if not _resource_bars.has(resource_id):
+		return
 	_resource_bars[resource_id].value = value
+	var maximum: int = int(_resource_bars[resource_id].max_value)
 	_resource_values[resource_id].text = "%d / %d" % [
 		value,
-		_service.get_resource_cap(),
+		maximum,
 	]
 
 
@@ -257,15 +354,16 @@ func _set_activity_buttons_enabled(enabled: bool) -> void:
 	for activity_id: StringName in _service.get_activity_ids():
 		var button: Button = _activity_buttons[activity_id]
 		button.disabled = not enabled
-		if _service != null:
-			var label: String = _service.get_activity_label(activity_id)
-			if not label.is_empty():
-				button.text = label
 
 
 func _format_preview(activity_id: StringName, result: TrainingState) -> String:
 	var lines: PackedStringArray = [
 		"Prévia — %s" % _service.get_activity_label(activity_id),
+		"Categoria: %s · Energia necessária: %d"
+		% [
+			_category_label(_service.get_activity_category(activity_id)),
+			_service.get_activity_energy_cost(activity_id),
+		],
 	]
 	for stat_id: StringName in TrainingState.ATTRIBUTE_IDS:
 		var old_value: int = _state.stats[stat_id]
@@ -275,6 +373,15 @@ func _format_preview(activity_id: StringName, result: TrainingState) -> String:
 	_append_resource_preview(lines, "Energia", _state.energy, result.energy)
 	_append_resource_preview(lines, "Estresse", _state.stress, result.stress)
 	_append_resource_preview(lines, "Motivação", _state.motivation, result.motivation)
+	_append_resource_preview(lines, "Créditos", _state.credits, result.credits)
+	_append_resource_preview(lines, "Reputação", _state.reputation, result.reputation)
+	for bond_id: StringName in _state.bonds:
+		_append_resource_preview(
+			lines,
+			"Vínculo — %s" % _display_bond_name(bond_id),
+			_state.bonds[bond_id],
+			result.bonds[bond_id]
+		)
 	lines.append("Ações restantes após confirmar: %d" % result.actions_remaining)
 	return "\n".join(lines)
 

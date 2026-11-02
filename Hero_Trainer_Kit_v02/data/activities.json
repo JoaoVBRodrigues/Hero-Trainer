@@ -3,6 +3,8 @@
   "calendaring": {"total_weeks": 16, "action_blocks_per_week": 3},
   "stat_cap": 100,
   "resource_cap": 100,
+  "reputation_cap": 100,
+  "bond_cap": 100,
   "training_failure_formula": "clamp(0,60,round(max(0,35-energy)*0.9+stress*0.2+injury_level*12-mentor_bonus))",
   "notes": "Sinais positivos aumentam a variável; negativos reduzem. Dados de demonstração; nenhum custo monetário real ou IA runtime.",
   "activities": [

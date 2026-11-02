@@ -21,6 +21,9 @@ var stats: Dictionary[StringName, int] = {
 var energy: int = 0
 var stress: int = 0
 var motivation: int = 0
+var credits: int = 0
+var reputation: int = 0
+var bonds: Dictionary[StringName, int] = {}
 
 
 func duplicate_state() -> TrainingState:
@@ -31,6 +34,9 @@ func duplicate_state() -> TrainingState:
 	copy.energy = energy
 	copy.stress = stress
 	copy.motivation = motivation
+	copy.credits = credits
+	copy.reputation = reputation
+	copy.bonds = bonds.duplicate()
 	return copy
 
 
@@ -41,3 +47,6 @@ func copy_from(source: TrainingState) -> void:
 	energy = source.energy
 	stress = source.stress
 	motivation = source.motivation
+	credits = source.credits
+	reputation = source.reputation
+	bonds = source.bonds.duplicate()
