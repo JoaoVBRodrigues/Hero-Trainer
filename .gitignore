@@ -1,0 +1,5 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+Hero_Trainer_Kit_v02/
+addons/
