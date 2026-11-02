@@ -24,6 +24,8 @@ var motivation: int = 0
 var credits: int = 0
 var reputation: int = 0
 var bonds: Dictionary[StringName, int] = {}
+var rng_seed: int = 0
+var rng_state: int = 0
 
 
 func duplicate_state() -> TrainingState:
@@ -37,6 +39,8 @@ func duplicate_state() -> TrainingState:
 	copy.credits = credits
 	copy.reputation = reputation
 	copy.bonds = bonds.duplicate()
+	copy.rng_seed = rng_seed
+	copy.rng_state = rng_state
 	return copy
 
 
@@ -50,3 +54,5 @@ func copy_from(source: TrainingState) -> void:
 	credits = source.credits
 	reputation = source.reputation
 	bonds = source.bonds.duplicate()
+	rng_seed = source.rng_seed
+	rng_state = source.rng_state

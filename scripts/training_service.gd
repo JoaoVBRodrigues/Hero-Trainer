@@ -3,6 +3,9 @@ extends RefCounted
 
 const CHARACTER_DATA_PATH: String = "res://Hero_Trainer_Kit_v02/data/characters.json"
 const ACTIVITIES_DATA_PATH: String = "res://Hero_Trainer_Kit_v02/data/activities.json"
+const TRAINING_FAILURE_FORMULA: String = (
+	"clamp(0,60,round(max(0,35-energy)*0.9+stress*0.2+injury_level*12-mentor_bonus))"
+)
 const RESOURCE_KEY_MAP: Dictionary[StringName, StringName] = {
 	&"energy": &"energy",
 	&"stress": &"stress",
@@ -10,6 +13,9 @@ const RESOURCE_KEY_MAP: Dictionary[StringName, StringName] = {
 	&"credits": &"credits",
 	&"reputation": &"reputation",
 }
+const MAX_FAILURE_CHANCE_PERCENT: int = 60
+const PLACEHOLDER_INJURY_LEVEL: int = 0
+const PLACEHOLDER_MENTOR_BONUS: int = 0
 
 var _activities: Dictionary[StringName, Dictionary] = {}
 var _activity_labels: Dictionary[StringName, String] = {}
@@ -21,6 +27,17 @@ var _attribute_cap: int = 0
 var _resource_cap: int = 0
 var _reputation_cap: int = 0
 var _bond_cap: int = 0
+var _default_rng_seed: int
+
+
+func _init() -> void:
+	var seed_generator := RandomNumberGenerator.new()
+	seed_generator.randomize()
+	_default_rng_seed = seed_generator.seed
+
+
+func set_random_seed(seed_value: int) -> void:
+	_default_rng_seed = seed_value
 
 
 func get_total_weeks() -> int:
@@ -156,6 +173,12 @@ func load_data(character_data: Variant, activities_data: Variant) -> bool:
 		],
 		"activities.json"
 	):
+		return false
+	if typeof(activities_root.get("training_failure_formula")) != TYPE_STRING:
+		push_error("activities.json precisa definir training_failure_formula como texto.")
+		return false
+	if String(activities_root["training_failure_formula"]) != TRAINING_FAILURE_FORMULA:
+		push_error("A fórmula de falha declarada em activities.json não é suportada.")
 		return false
 	var attribute_cap: int = _read_positive_integer(
 		activities_root,
@@ -327,7 +350,12 @@ func create_initial_state() -> TrainingState:
 	if _initial_state == null:
 		push_error("Carregue os dados do projeto antes de criar o estado de treino.")
 		return null
-	return _initial_state.duplicate_state()
+	var state: TrainingState = _initial_state.duplicate_state()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = _default_rng_seed
+	state.rng_seed = _default_rng_seed
+	state.rng_state = rng.state
+	return state
 
 
 func get_activity_label(activity_id: StringName) -> String:
@@ -357,7 +385,16 @@ func preview_activity(
 		return preview
 
 	var activity: Dictionary = _activities[activity_id]
-	var resource_delta: Dictionary = activity["resource_delta"]
+	preview.activity_id = activity_id
+	preview.can_fail = bool(activity["can_fail"])
+	if preview.can_fail:
+		preview.failure_chance_percent = _calculate_failure_chance(
+			state.energy,
+			state.stress
+		)
+		preview.success_chance_percent = (
+			100 - preview.failure_chance_percent
+		)
 	var energy_cost: int = get_activity_energy_cost(activity_id)
 	if state.energy < energy_cost:
 		var missing_energy: int = energy_cost - state.energy
@@ -372,21 +409,48 @@ func preview_activity(
 		]
 		return preview
 
+	preview.success_result = _build_activity_result(state, activity, true, preview)
+	if preview.success_result == null:
+		return preview
+	if preview.can_fail:
+		preview.failure_result = _build_activity_result(
+			state,
+			activity,
+			false,
+			preview
+		)
+		if preview.failure_result == null:
+			return preview
+	else:
+		preview.failure_result = preview.success_result.duplicate_state()
+		preview.result = preview.success_result.duplicate_state()
+		preview.outcome = TrainingPreview.OUTCOME_DETERMINISTIC
+
+	preview.is_valid = true
+	return preview
+
+
+func _build_activity_result(
+	state: TrainingState,
+	activity: Dictionary,
+	apply_attribute_gains: bool,
+	preview: TrainingPreview
+) -> TrainingState:
 	var next_state: TrainingState = state.duplicate_state()
 	var stats_delta: Dictionary = activity["stats_delta"]
-	for stat_id: StringName in TrainingState.ATTRIBUTE_IDS:
-		var delta_key: String = String(stat_id)
-		if stats_delta.has(delta_key):
-			next_state.stats[stat_id] = clampi(
-				next_state.stats[stat_id] + int(stats_delta[delta_key]),
-				0,
-				_attribute_cap
-			)
+	if apply_attribute_gains:
+		for stat_id: StringName in TrainingState.ATTRIBUTE_IDS:
+			var delta_key: String = String(stat_id)
+			if stats_delta.has(delta_key):
+				next_state.stats[stat_id] = clampi(
+					next_state.stats[stat_id] + int(stats_delta[delta_key]),
+					0,
+					_attribute_cap
+				)
 
+	var resource_delta: Dictionary = activity["resource_delta"]
 	for json_key: String in resource_delta:
 		var data_key: StringName = StringName(json_key)
-		if not resource_delta.has(json_key):
-			continue
 		var state_key: StringName = RESOURCE_KEY_MAP[data_key]
 		var changed_value: int = _get_resource_value(next_state, state_key)
 		changed_value += int(resource_delta[json_key])
@@ -394,9 +458,9 @@ func preview_activity(
 			if changed_value < 0:
 				preview.message = (
 					"Créditos insuficientes para %s: saldo atual %d."
-					% [_activity_labels[activity_id], state.credits]
+					% [_activity_labels[preview.activity_id], state.credits]
 				)
-				return preview
+				return null
 			_set_resource_value(next_state, state_key, changed_value)
 		elif state_key == &"reputation":
 			_set_resource_value(
@@ -418,15 +482,48 @@ func preview_activity(
 		next_state.bonds[bond_id] = clampi(changed_bond, 0, _bond_cap)
 
 	next_state.actions_remaining -= 1
-	preview.is_valid = true
-	preview.result = next_state
-	return preview
+	return next_state
+
+
+func _calculate_failure_chance(energy: int, stress: int) -> int:
+	var raw_chance: float = (
+		maxf(0.0, 35.0 - float(energy)) * 0.9
+		+ float(stress) * 0.2
+		+ float(PLACEHOLDER_INJURY_LEVEL) * 12.0
+		- float(PLACEHOLDER_MENTOR_BONUS)
+	)
+	return clampi(roundi(raw_chance), 0, MAX_FAILURE_CHANCE_PERCENT)
 
 
 func apply_activity(state: TrainingState, activity_id: StringName) -> TrainingPreview:
 	var preview: TrainingPreview = preview_activity(state, activity_id)
-	if preview.is_valid:
-		state.copy_from(preview.result)
+	if not preview.is_valid:
+		return preview
+
+	var applied_state: TrainingState
+	if preview.can_fail:
+		var rng := RandomNumberGenerator.new()
+		rng.seed = state.rng_seed
+		rng.state = state.rng_state
+		preview.random_roll = rng.randf()
+		preview.was_applied = true
+		if preview.random_roll < float(preview.failure_chance_percent) / 100.0:
+			preview.outcome = TrainingPreview.OUTCOME_FAILURE
+			applied_state = preview.failure_result
+			preview.message = "Treinamento falhou. Os custos foram aplicados."
+		else:
+			preview.outcome = TrainingPreview.OUTCOME_SUCCESS
+			applied_state = preview.success_result
+			preview.message = "Treinamento concluído com sucesso."
+		applied_state.rng_state = rng.state
+	else:
+		preview.was_applied = true
+		preview.outcome = TrainingPreview.OUTCOME_DETERMINISTIC
+		applied_state = preview.success_result
+		preview.message = "Atividade concluída."
+
+	preview.result = applied_state.duplicate_state()
+	state.copy_from(applied_state)
 	return preview
 
 
@@ -455,6 +552,8 @@ func _validate_state(state: TrainingState) -> String:
 		or state.actions_remaining > _actions_per_week
 	):
 		return "A quantidade de ações restantes está fora dos limites."
+	if state.rng_state == 0:
+		return "O estado do gerador aleatório está inválido."
 	if state.stats.size() != TrainingState.ATTRIBUTE_IDS.size():
 		return "O conjunto de atributos do estado está inválido."
 	for stat_id: StringName in TrainingState.ATTRIBUTE_IDS:

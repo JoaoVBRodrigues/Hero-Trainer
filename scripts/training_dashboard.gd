@@ -561,20 +561,40 @@ func _on_activity_selected(activity_id: StringName) -> void:
 		_feedback_label.text = "Escolha outra atividade ou cancele a prévia."
 		return
 
-	_preview_status.text = "DISPONÍVEL  ·  consome 1 bloco semanal ao confirmar"
-	_preview_status.add_theme_color_override(
-		"font_color",
-		TrainingThemeScript.MINT
-	)
-	_preview_body.text = _format_preview(activity_id, preview.result)
+	if preview.can_fail:
+		_preview_status.text = (
+			"RISCO  ·  sucesso %d%%  ·  falha %d%%  ·  1 bloco ao confirmar"
+			% [
+				preview.success_chance_percent,
+				preview.failure_chance_percent,
+			]
+		)
+		_preview_status.add_theme_color_override(
+			"font_color",
+			TrainingThemeScript.GOLD
+		)
+	else:
+		_preview_status.text = "DISPONÍVEL  ·  consome 1 bloco semanal ao confirmar"
+		_preview_status.add_theme_color_override(
+			"font_color",
+			TrainingThemeScript.MINT
+		)
+	_preview_body.text = _format_preview(activity_id, preview)
 	_confirm_button.disabled = false
-	_feedback_label.text = "A prévia não consome ação."
+	if preview.can_fail:
+		_feedback_label.text = (
+			"A prévia não sorteia nem consome ação. O resultado só será definido ao confirmar."
+		)
+	else:
+		_feedback_label.text = "A prévia não consome ação."
 
 
 func _on_confirm_pressed() -> void:
 	if _state == null or _selected_activity == &"":
 		return
-	var applied: TrainingPreview = _service.apply_activity(_state, _selected_activity)
+	var activity_id: StringName = _selected_activity
+	var state_before: TrainingState = _state.duplicate_state()
+	var applied: TrainingPreview = _service.apply_activity(_state, activity_id)
 	if not applied.is_valid:
 		_preview_status.text = "INDISPONÍVEL"
 		_preview_status.add_theme_color_override(
@@ -588,12 +608,29 @@ func _on_confirm_pressed() -> void:
 
 	_selected_activity = &""
 	_refresh_state()
+	if applied.can_fail:
+		_preview_title.text = _service.get_activity_label(activity_id)
+		if applied.outcome == TrainingPreview.OUTCOME_FAILURE:
+			_preview_status.text = "FALHA  ·  custos aplicados  ·  1 bloco consumido"
+			_preview_status.add_theme_color_override(
+				"font_color",
+				TrainingThemeScript.CORAL
+			)
+		else:
+			_preview_status.text = "SUCESSO  ·  ganhos aplicados  ·  1 bloco consumido"
+			_preview_status.add_theme_color_override(
+				"font_color",
+				TrainingThemeScript.MINT
+			)
+		_preview_body.text = _format_applied_result(state_before, applied)
 	if _state.actions_remaining == 0:
 		if _state.week < _service.get_total_weeks():
 			week_completed.emit(_state.week)
 			_feedback_label.text = "Semana concluída. Avance quando estiver pronto."
 		else:
 			_feedback_label.text = "Ciclo de %d semanas concluído." % _service.get_total_weeks()
+	elif applied.can_fail:
+		_feedback_label.text = applied.message
 	else:
 		_feedback_label.text = "Treinamento aplicado. Foi consumido 1 bloco."
 
@@ -663,12 +700,12 @@ func _refresh_state() -> void:
 		not week_finished
 		or _state.week >= _service.get_total_weeks()
 	)
+	_confirm_button.disabled = true
+	_cancel_button.disabled = _selected_activity == &""
 	if _state.week >= _service.get_total_weeks() and week_finished:
 		_advance_button.text = "Semestre encerrado"
 	else:
 		_advance_button.text = "Avançar semana"
-	if _selected_activity != &"":
-		_confirm_button.disabled = true
 
 
 func _set_resource_display(resource_id: StringName, value: int) -> void:
@@ -719,30 +756,7 @@ func _update_activity_buttons() -> void:
 		)
 
 
-func _format_preview(activity_id: StringName, result: TrainingState) -> String:
-	var effect_lines := PackedStringArray()
-	for stat_id: StringName in TrainingState.ATTRIBUTE_IDS:
-		_append_change(
-			effect_lines,
-			STAT_LABELS[stat_id],
-			_state.stats[stat_id],
-			result.stats[stat_id]
-		)
-	_append_change(effect_lines, "Energia", _state.energy, result.energy)
-	_append_change(effect_lines, "Estresse", _state.stress, result.stress)
-	_append_change(effect_lines, "Motivação", _state.motivation, result.motivation)
-	_append_change(effect_lines, "Créditos", _state.credits, result.credits)
-	_append_change(effect_lines, "Reputação", _state.reputation, result.reputation)
-	for bond_id: StringName in _state.bonds:
-		_append_change(
-			effect_lines,
-			"Vínculo — %s" % _display_bond_name(bond_id),
-			_state.bonds[bond_id],
-			result.bonds[bond_id]
-		)
-	if effect_lines.is_empty():
-		effect_lines.append("Sem alteração direta nos atributos ou recursos.")
-
+func _format_preview(activity_id: StringName, preview: TrainingPreview) -> String:
 	var lines := PackedStringArray()
 	lines.append(
 		"Categoria: %s  ·  Energia necessária: %d"
@@ -751,12 +765,105 @@ func _format_preview(activity_id: StringName, result: TrainingState) -> String:
 			_service.get_activity_energy_cost(activity_id),
 		]
 	)
-	lines.append("  ·  ".join(effect_lines))
-	lines.append(
-		"Ações: %d → %d (1 bloco será consumido ao confirmar)."
-		% [_state.actions_remaining, result.actions_remaining]
-	)
+	if preview.can_fail:
+		var success_changes: PackedStringArray = _format_state_changes(
+			_state,
+			preview.success_result,
+			true,
+			false
+		)
+		var guaranteed_costs: PackedStringArray = _format_state_changes(
+			_state,
+			preview.failure_result,
+			false,
+			true
+		)
+		lines.append(
+			"Sucesso (%d%%): %s"
+			% [
+				preview.success_chance_percent,
+				", ".join(success_changes) if not success_changes.is_empty() else "sem ganhos",
+			]
+		)
+		lines.append(
+			"Falha (%d%%): ganhos de atributos não são aplicados."
+			% preview.failure_chance_percent
+		)
+		lines.append(
+			"Custos/efeitos garantidos: %s"
+			% [
+				", ".join(guaranteed_costs)
+				if not guaranteed_costs.is_empty()
+				else "nenhum recurso alterado"
+			]
+		)
+		lines.append("Ações consumidas ao confirmar: 1.")
+	else:
+		var effect_changes: PackedStringArray = _format_state_changes(
+			_state,
+			preview.result,
+			true,
+			true
+		)
+		if effect_changes.is_empty():
+			effect_changes.append("Sem alteração direta nos atributos ou recursos.")
+		lines.append("  ·  ".join(effect_changes))
+		lines.append(
+			"Ações: %d → %d (1 bloco será consumido ao confirmar)."
+			% [_state.actions_remaining, preview.result.actions_remaining]
+		)
 	return "\n".join(lines)
+
+
+func _format_applied_result(
+	state_before: TrainingState,
+	applied: TrainingPreview
+) -> String:
+	var lines := PackedStringArray()
+	lines.append(applied.message)
+	var changes: PackedStringArray = _format_state_changes(
+		state_before,
+		applied.result,
+		true,
+		true
+	)
+	if changes.is_empty():
+		lines.append("Nenhum atributo ou recurso mudou.")
+	else:
+		lines.append(", ".join(changes))
+	lines.append("Ações restantes: %d." % applied.result.actions_remaining)
+	return "\n".join(lines)
+
+
+func _format_state_changes(
+	before: TrainingState,
+	after: TrainingState,
+	include_stats: bool,
+	include_resources: bool
+) -> PackedStringArray:
+	var changes := PackedStringArray()
+	if include_stats:
+		for stat_id: StringName in TrainingState.ATTRIBUTE_IDS:
+			_append_change(
+				changes,
+				STAT_LABELS[stat_id],
+				before.stats[stat_id],
+				after.stats[stat_id]
+			)
+	if include_resources:
+		_append_change(changes, "Energia", before.energy, after.energy)
+		_append_change(changes, "Estresse", before.stress, after.stress)
+		_append_change(changes, "Motivação", before.motivation, after.motivation)
+		_append_change(changes, "Créditos", before.credits, after.credits)
+		_append_change(changes, "Reputação", before.reputation, after.reputation)
+		for bond_id: StringName in before.bonds:
+			_append_change(
+				changes,
+				"Vínculo — %s" % _display_bond_name(bond_id),
+				before.bonds[bond_id],
+				after.bonds[bond_id]
+			)
+	return changes
 
 
 func _append_change(
