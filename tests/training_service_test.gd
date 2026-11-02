@@ -17,13 +17,25 @@ func _run_tests() -> void:
 		_finish()
 		return
 
+	_test_configuration_comes_from_json(service)
 	_test_activity_effects(service)
 	_test_stat_and_resource_caps(service)
 	_test_three_actions_and_fourth_action(service)
 	_test_rest_recovers_energy(service)
 	_test_preview_matches_applied_result(service)
+	_test_insufficient_energy_rejection(service)
+	_test_unavailable_activity_preview(service)
 	_test_week_advancement(service)
 	_finish()
+
+
+func _test_configuration_comes_from_json(service: TrainingService) -> void:
+	var state: TrainingState = service.create_initial_state()
+	_check(service.get_total_weeks() == 16, "campaign length comes from activities JSON")
+	_check(service.get_actions_per_week() == 3, "weekly actions come from activities JSON")
+	_check(service.get_attribute_cap() == 100, "attribute cap comes from activities JSON")
+	_check(service.get_resource_cap() == 100, "resource cap comes from activities JSON")
+	_check(state.actions_remaining == service.get_actions_per_week(), "initial action count uses JSON")
 
 
 func _test_activity_effects(service: TrainingService) -> void:
@@ -41,13 +53,13 @@ func _test_stat_and_resource_caps(service: TrainingService) -> void:
 	var state: TrainingState = service.create_initial_state()
 	state.stats[&"pot"] = 98
 	state.stats[&"tec"] = 99
-	state.energy = 5
+	state.energy = 15
 	state.stress = 98
 	var combat: TrainingPreview = service.apply_activity(state, &"combat")
-	_check(combat.is_valid, "combat near limits applies")
+	_check(combat.is_valid, "combat applies at exactly its minimum energy")
 	_check(state.stats[&"pot"] == 100, "power is capped at 100")
 	_check(state.stats[&"tec"] == 100, "technique is capped at 100")
-	_check(state.energy == 0, "energy is clamped at 0")
+	_check(state.energy == 0, "combat consumes exactly its minimum energy")
 	_check(state.stress == 100, "stress is capped at 100")
 
 	state.motivation = 99
@@ -98,6 +110,92 @@ func _test_preview_matches_applied_result(service: TrainingService) -> void:
 	)
 
 
+func _test_insufficient_energy_rejection(service: TrainingService) -> void:
+	_test_rejected_activity_preserves_state(service, &"combat", 5, "combat")
+	_test_rejected_activity_preserves_state(service, &"control", 12, "control")
+	var control_boundary_state: TrainingState = service.create_initial_state()
+	control_boundary_state.energy = 13
+	var control_at_minimum: TrainingPreview = service.apply_activity(
+		control_boundary_state,
+		&"control"
+	)
+	_check(control_at_minimum.is_valid, "control applies at exactly its minimum energy")
+	_check(control_boundary_state.energy == 0, "control consumes its minimum energy")
+
+
+func _test_rejected_activity_preserves_state(
+	service: TrainingService,
+	activity_id: StringName,
+	energy: int,
+	label: String
+) -> void:
+	var state: TrainingState = service.create_initial_state()
+	state.energy = energy
+	state.stats[&"pot"] = 99
+	state.stats[&"tec"] = 99
+	state.stress = 99
+	state.motivation = 99
+	var before: Dictionary = _state_snapshot(state)
+
+	var preview: TrainingPreview = service.preview_activity(state, activity_id)
+	_check(not preview.is_valid, "%s preview rejects insufficient energy" % label)
+	_check(
+		preview.message.contains("Faltam"),
+		"%s preview explains missing energy" % label
+	)
+	_check(
+		state.actions_remaining == service.get_actions_per_week(),
+		"%s preview rejection consumes no action" % label
+	)
+	_check(
+		_state_snapshot(state) == before,
+		"%s preview rejection preserves the whole state" % label
+	)
+
+	var applied: TrainingPreview = service.apply_activity(state, activity_id)
+	_check(not applied.is_valid, "%s application rejects insufficient energy" % label)
+	_check(
+		state.actions_remaining == service.get_actions_per_week(),
+		"%s application rejection consumes no action" % label
+	)
+	_check(
+		_state_snapshot(state) == before,
+		"%s application rejection preserves the whole state" % label
+	)
+
+
+func _test_unavailable_activity_preview(service: TrainingService) -> void:
+	var state: TrainingState = service.create_initial_state()
+	var before: Dictionary = _state_snapshot(state)
+	var preview: TrainingPreview = service.preview_activity(state, &"missing_activity")
+	_check(not preview.is_valid, "unknown activity preview is rejected")
+	_check(
+		preview.message.contains("não está disponível"),
+		"unknown activity preview explains it is unavailable"
+	)
+	_check(
+		_state_snapshot(state) == before,
+		"unknown activity preview preserves the whole state"
+	)
+	var applied: TrainingPreview = service.apply_activity(state, &"missing_activity")
+	_check(not applied.is_valid, "unknown activity cannot be applied")
+	_check(
+		_state_snapshot(state) == before,
+		"unknown activity rejection preserves the whole state"
+	)
+
+
+func _state_snapshot(state: TrainingState) -> Dictionary:
+	return {
+		"week": state.week,
+		"actions_remaining": state.actions_remaining,
+		"stats": state.stats.duplicate(),
+		"energy": state.energy,
+		"stress": state.stress,
+		"motivation": state.motivation,
+	}
+
+
 func _test_week_advancement(service: TrainingService) -> void:
 	var state: TrainingState = service.create_initial_state()
 	_check(not service.advance_week(state), "cannot advance before using all actions")
@@ -105,7 +203,15 @@ func _test_week_advancement(service: TrainingService) -> void:
 		service.apply_activity(state, &"rest")
 	_check(service.advance_week(state), "week advances after the third action")
 	_check(state.week == 2, "week number increments")
-	_check(state.actions_remaining == 3, "new week restores three actions")
+	_check(
+		state.actions_remaining == service.get_actions_per_week(),
+		"new week restores the JSON action count"
+	)
+
+	state.week = service.get_total_weeks()
+	for action_index: int in range(service.get_actions_per_week()):
+		service.apply_activity(state, &"rest")
+	_check(not service.advance_week(state), "campaign does not advance past its JSON week limit")
 
 
 func _check(condition: bool, description: String) -> void:

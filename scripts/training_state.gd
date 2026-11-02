@@ -10,7 +10,7 @@ const ATTRIBUTE_IDS: Array[StringName] = [
 ]
 
 var week: int = 1
-var actions_remaining: int = 3
+var actions_remaining: int = 0
 var stats: Dictionary[StringName, int] = {
 	&"pot": 0,
 	&"res": 0,

@@ -1,0 +1,198 @@
+{
+  "schema_version": 2,
+  "disclaimer": "Fatos de personagens fornecidos pelo autor; estatísticas e estados são propostas de protótipo, não dados canônicos. Idades e aparências precisas não foram estabelecidas.",
+  "characters": [
+    {
+      "id": "hori",
+      "display_name": "Hori",
+      "campaign_playable_in_mvp": true,
+      "role": "cadete sociável com núcleo energético perigoso",
+      "arc_theme": "alegria, segurança física, confiança e autonomia",
+      "stats": {
+        "pot": 30,
+        "res": 34,
+        "tec": 28,
+        "teo": 38,
+        "sin": 40
+      },
+      "resources": {
+        "energy": 75,
+        "stress": 12,
+        "mood": 65,
+        "credits": 50,
+        "reputation": 20,
+        "injury_level": 0
+      },
+      "axes": {
+        "autonomy": 0,
+        "solidarity": 0,
+        "ambition": 0,
+        "integrity": 0
+      },
+      "aptitudes": {
+        "combat": 1.1,
+        "lab": 0.95,
+        "control": 1.0,
+        "conditioning": 1.05
+      },
+      "bonds": {
+        "luppi": 25,
+        "ray": 30,
+        "instructor": 30
+      },
+      "canon": {
+        "personality": [
+          "sociável",
+          "animada",
+          "tem muitas amigas",
+          "esconde dor atrás de sorriso"
+        ],
+        "condition": [
+          "núcleo perigoso que já feriu amigas",
+          "ouve voz de versão mais malvada de si",
+          "dificuldade em reconhecer rostos ligada a Honkai"
+        ]
+      },
+      "route_state": {
+        "core_stability": 65,
+        "echo_pressure": 20,
+        "trusted_network": 30,
+        "identification_aids": false,
+        "honesty_to_friends": 10
+      },
+      "design_assumptions": [
+        "medidores são proposta de ficção e não diagnóstico"
+      ]
+    },
+    {
+      "id": "luppi",
+      "display_name": "Luppi",
+      "campaign_playable_in_mvp": false,
+      "role": "cadete lutadora, garota-rato oriunda de experimento",
+      "arc_theme": "ordens, relações com professoras, especialização e escolhas próprias",
+      "stats": {
+        "pot": 40,
+        "res": 34,
+        "tec": 40,
+        "teo": 24,
+        "sin": 27
+      },
+      "resources": {
+        "energy": 80,
+        "stress": 8,
+        "mood": 70,
+        "credits": 40,
+        "reputation": 15,
+        "injury_level": 0
+      },
+      "axes": {
+        "autonomy": 15,
+        "solidarity": 0,
+        "ambition": 5,
+        "integrity": 0
+      },
+      "aptitudes": {
+        "combat": 1.05,
+        "lab": 0.85,
+        "control": 1.1,
+        "conditioning": 1.1
+      },
+      "bonds": {
+        "hori": 25,
+        "ray": 15,
+        "instructor": 20
+      },
+      "canon": {
+        "identity": [
+          "garota-rato",
+          "é autista",
+          "resultado de um experimento"
+        ],
+        "personality": [
+          "gosta de lutar",
+          "referências recorrentes a jogos",
+          "muito focada em interesses",
+          "segue cadeia de comando com empenho",
+          "tem dificuldade para entender muitos sentimentos, mas não é uma pessoa sem sentimentos"
+        ],
+        "relationships": [
+          "professoras cuidam dela e convivem com ela"
+        ]
+      },
+      "route_state": {
+        "mentor_trust": 40,
+        "command_clarity": 40,
+        "self_advocacy": 15,
+        "mission_familiarity": 35
+      },
+      "design_assumptions": [
+        "autismo não é estado numérico nem resultado do experimento sem confirmação",
+        "professoras não são necessariamente manipuladoras"
+      ]
+    },
+    {
+      "id": "ray",
+      "display_name": "Ray",
+      "campaign_playable_in_mvp": false,
+      "role": "cadete fisicamente forte com responsabilidades financeiras",
+      "arc_theme": "sustento do orfanato, proteção das amigas e limites do sacrifício",
+      "stats": {
+        "pot": 43,
+        "res": 42,
+        "tec": 30,
+        "teo": 28,
+        "sin": 31
+      },
+      "resources": {
+        "energy": 72,
+        "stress": 15,
+        "mood": 58,
+        "credits": 60,
+        "reputation": 25,
+        "injury_level": 0
+      },
+      "axes": {
+        "autonomy": 5,
+        "solidarity": -5,
+        "ambition": 15,
+        "integrity": 5
+      },
+      "aptitudes": {
+        "combat": 0.9,
+        "lab": 1.15,
+        "control": 1.1,
+        "conditioning": 0.85
+      },
+      "bonds": {
+        "hori": 30,
+        "luppi": 15,
+        "instructor": 20
+      },
+      "canon": {
+        "appearance": [
+          "mulher alta",
+          "forte",
+          "chifres por mutação"
+        ],
+        "history": [
+          "separou-se de amigas na América para treinar longe delas (local exato não confirmado)",
+          "busca renda para cuidados médicos por doença Honkai"
+        ],
+        "relationships": [
+          "crianças do orfanato são relevantes"
+        ]
+      },
+      "route_state": {
+        "orphanage_fund": 0,
+        "support_network": 15,
+        "ray_self_care": 20,
+        "honesty_to_friends": 20
+      },
+      "design_assumptions": [
+        "valores financeiros fictícios",
+        "voz e personalidade ainda sem definição",
+        "sem nomes das crianças"
+      ]
+    }
+  ]
+}

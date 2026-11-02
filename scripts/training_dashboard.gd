@@ -3,11 +3,6 @@ extends Control
 signal week_completed(week_number: int)
 
 const TrainingServiceScript = preload("res://scripts/training_service.gd")
-const ACTIVITY_IDS: Array[StringName] = [
-	&"combat",
-	&"control",
-	&"rest",
-]
 const STAT_LABELS: Dictionary[StringName, String] = {
 	&"pot": "Potência",
 	&"res": "Resistência",
@@ -33,9 +28,10 @@ var _advance_button: Button
 
 
 func _ready() -> void:
-	_build_interface()
 	_service = TrainingServiceScript.new()
-	if not _service.load_project_data():
+	var project_data_loaded: bool = _service.load_project_data()
+	_build_interface()
+	if not project_data_loaded:
 		_status_label.text = "Não foi possível carregar os dados de treinamento."
 		_set_activity_buttons_enabled(false)
 		return
@@ -88,7 +84,7 @@ func _build_interface() -> void:
 	var activities_row: HBoxContainer = HBoxContainer.new()
 	activities_row.add_theme_constant_override("separation", 12)
 	content.add_child(activities_row)
-	for activity_id: StringName in ACTIVITY_IDS:
+	for activity_id: StringName in _service.get_activity_ids():
 		var button: Button = Button.new()
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		button.custom_minimum_size = Vector2(0, 64)
@@ -151,7 +147,7 @@ func _add_resource_row(
 
 	var bar: ProgressBar = ProgressBar.new()
 	bar.min_value = 0
-	bar.max_value = TrainingService.RESOURCE_CAP
+	bar.max_value = _service.get_resource_cap()
 	bar.show_percentage = false
 	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var fill_style: StyleBoxFlat = StyleBoxFlat.new()
@@ -180,7 +176,10 @@ func _on_activity_selected(activity_id: StringName) -> void:
 	_selected_activity = activity_id
 	var preview: TrainingPreview = _service.preview_activity(_state, activity_id)
 	if not preview.is_valid:
-		_status_label.text = preview.message
+		_preview_label.text = preview.message
+		_preview_panel.visible = true
+		_confirm_button.disabled = true
+		_status_label.text = "Atividade bloqueada. Descanse ou escolha outra atividade."
 		return
 	_preview_label.text = _format_preview(activity_id, preview.result)
 	_preview_panel.visible = true
@@ -193,14 +192,19 @@ func _on_confirm_pressed() -> void:
 		return
 	var applied: TrainingPreview = _service.apply_activity(_state, _selected_activity)
 	if not applied.is_valid:
-		_status_label.text = applied.message
+		_preview_label.text = applied.message
+		_confirm_button.disabled = true
+		_status_label.text = "Atividade bloqueada. Descanse ou escolha outra atividade."
 		return
 	_preview_panel.visible = false
 	_selected_activity = &""
 	_refresh_state()
 	if _state.actions_remaining == 0:
-		week_completed.emit(_state.week)
-		_status_label.text = "Semana concluída. Avance para iniciar outra."
+		if _state.week < _service.get_total_weeks():
+			week_completed.emit(_state.week)
+			_status_label.text = "Semana concluída. Avance para iniciar outra."
+		else:
+			_status_label.text = "Ciclo de %d semanas concluído." % _service.get_total_weeks()
 	else:
 		_status_label.text = "Treinamento aplicado."
 
@@ -226,7 +230,7 @@ func _refresh_state() -> void:
 	_week_label.text = "Semana %d" % _state.week
 	_actions_label.text = "Ações restantes: %d de %d" % [
 		_state.actions_remaining,
-		TrainingService.ACTIONS_PER_WEEK,
+		_service.get_actions_per_week(),
 	]
 	for stat_id: StringName in TrainingState.ATTRIBUTE_IDS:
 		_stat_labels[stat_id].text = str(_state.stats[stat_id])
@@ -235,19 +239,22 @@ func _refresh_state() -> void:
 	_set_resource_display(&"motivation", _state.motivation)
 	var has_actions: bool = _state.actions_remaining > 0
 	_set_activity_buttons_enabled(has_actions)
-	_advance_button.visible = not has_actions
+	_advance_button.visible = (
+		not has_actions
+		and _state.week < _service.get_total_weeks()
+	)
 
 
 func _set_resource_display(resource_id: StringName, value: int) -> void:
 	_resource_bars[resource_id].value = value
 	_resource_values[resource_id].text = "%d / %d" % [
 		value,
-		TrainingService.RESOURCE_CAP,
+		_service.get_resource_cap(),
 	]
 
 
 func _set_activity_buttons_enabled(enabled: bool) -> void:
-	for activity_id: StringName in ACTIVITY_IDS:
+	for activity_id: StringName in _service.get_activity_ids():
 		var button: Button = _activity_buttons[activity_id]
 		button.disabled = not enabled
 		if _service != null:

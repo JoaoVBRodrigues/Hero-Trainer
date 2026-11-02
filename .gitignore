@@ -1,5 +1,29 @@
-# Godot 4+ specific ignores
+# Godot-generated files
 .godot/
 /android/
-Hero_Trainer_Kit_v02/
+
+# External editor plugin (review separately before versioning)
 addons/
+
+# Build and temporary files
+/build/
+/dist/
+*.tmp
+*.temp
+*.bak
+*.swp
+*.log
+*~
+Thumbs.db
+.DS_Store
+
+# Local credentials and secrets
+.env
+.env.*
+!.env.example
+credentials.json
+secrets.json
+*.pem
+*.key
+*.p12
+*.pfx

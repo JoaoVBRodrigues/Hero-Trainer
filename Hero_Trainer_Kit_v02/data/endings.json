@@ -1,0 +1,263 @@
+{
+  "schema_version": 2,
+  "notes": "Regras de EXEMPLO; não converter condições de neurodivergência em requisitos moralizantes. Nomes de finais são provisórios. Exige testes de alcançabilidade.",
+  "endings": [
+    {
+      "id": "hori_guardian_command",
+      "character": "hori",
+      "priority": 40,
+      "title": "Comandante exemplar",
+      "conditions": {
+        "all": [
+          {
+            "path": "stats.pot",
+            "op": ">=",
+            "value": 55
+          },
+          {
+            "path": "stats.res",
+            "op": ">=",
+            "value": 50
+          },
+          {
+            "path": "resources.reputation",
+            "op": ">=",
+            "value": 35
+          },
+          {
+            "path": "flags.final_mission_success",
+            "op": "==",
+            "value": true
+          }
+        ]
+      },
+      "tag": "career"
+    },
+    {
+      "id": "hori_team_guardian",
+      "character": "hori",
+      "priority": 50,
+      "title": "Guardiã da equipe",
+      "conditions": {
+        "all": [
+          {
+            "path": "axes.solidarity",
+            "op": ">=",
+            "value": 15
+          },
+          {
+            "path": "bonds.luppi",
+            "op": ">=",
+            "value": 45
+          },
+          {
+            "path": "bonds.ray",
+            "op": ">=",
+            "value": 45
+          },
+          {
+            "path": "flags.final_mission_success",
+            "op": "==",
+            "value": true
+          }
+        ]
+      },
+      "tag": "personal"
+    },
+    {
+      "id": "hori_independent",
+      "character": "hori",
+      "priority": 30,
+      "title": "Guardiã independente",
+      "conditions": {
+        "all": [
+          {
+            "path": "axes.autonomy",
+            "op": ">=",
+            "value": 15
+          },
+          {
+            "path": "flags.final_mission_attempted",
+            "op": "==",
+            "value": true
+          }
+        ]
+      },
+      "tag": "personal"
+    },
+    {
+      "id": "hori_overburdened",
+      "character": "hori",
+      "priority": 10,
+      "title": "O peso do dever",
+      "conditions": {
+        "all": [
+          {
+            "path": "flags.final_mission_attempted",
+            "op": "==",
+            "value": true
+          }
+        ]
+      },
+      "tag": "fallback"
+    },
+    {
+      "id": "ray_network",
+      "character": "ray",
+      "priority": 50,
+      "title": "Rede de apoio",
+      "conditions": {
+        "all": [
+          {
+            "path": "flags.ray_sought_scholarship",
+            "op": "==",
+            "value": true
+          },
+          {
+            "path": "axes.solidarity",
+            "op": ">=",
+            "value": 5
+          }
+        ]
+      },
+      "tag": "personal"
+    },
+    {
+      "id": "ray_protector",
+      "character": "ray",
+      "priority": 40,
+      "title": "Protetora do orfanato",
+      "conditions": {
+        "all": [
+          {
+            "path": "stats.pot",
+            "op": ">=",
+            "value": 55
+          },
+          {
+            "path": "flags.final_mission_success",
+            "op": "==",
+            "value": true
+          }
+        ]
+      },
+      "tag": "personal"
+    },
+    {
+      "id": "ray_return",
+      "character": "ray",
+      "priority": 30,
+      "title": "De volta para casa",
+      "conditions": {
+        "all": [
+          {
+            "path": "flags.ray_communicated_limits",
+            "op": "==",
+            "value": true
+          },
+          {
+            "path": "flags.final_mission_attempted",
+            "op": "==",
+            "value": true
+          }
+        ]
+      },
+      "tag": "personal"
+    },
+    {
+      "id": "ray_rebuild",
+      "character": "ray",
+      "priority": 10,
+      "title": "Distância e reencontro",
+      "conditions": {
+        "all": [
+          {
+            "path": "flags.final_mission_attempted",
+            "op": "==",
+            "value": true
+          }
+        ]
+      },
+      "tag": "fallback"
+    },
+    {
+      "id": "luppi_instructor",
+      "character": "luppi",
+      "priority": 50,
+      "title": "Instrutora de combate",
+      "conditions": {
+        "all": [
+          {
+            "path": "stats.tec",
+            "op": ">=",
+            "value": 53
+          },
+          {
+            "path": "flags.luppi_proposed_plan",
+            "op": "==",
+            "value": true
+          }
+        ]
+      },
+      "tag": "personal"
+    },
+    {
+      "id": "luppi_agent",
+      "character": "luppi",
+      "priority": 40,
+      "title": "Agente por escolha",
+      "conditions": {
+        "all": [
+          {
+            "path": "axes.autonomy",
+            "op": ">=",
+            "value": 18
+          },
+          {
+            "path": "flags.final_mission_success",
+            "op": "==",
+            "value": true
+          }
+        ]
+      },
+      "tag": "personal"
+    },
+    {
+      "id": "luppi_advocate",
+      "character": "luppi",
+      "priority": 30,
+      "title": "Reformadora de protocolos",
+      "conditions": {
+        "all": [
+          {
+            "path": "flags.luppi_asked_clarification",
+            "op": "==",
+            "value": true
+          },
+          {
+            "path": "flags.final_mission_attempted",
+            "op": "==",
+            "value": true
+          }
+        ]
+      },
+      "tag": "personal"
+    },
+    {
+      "id": "luppi_identity",
+      "character": "luppi",
+      "priority": 10,
+      "title": "O uniforme não responde",
+      "conditions": {
+        "all": [
+          {
+            "path": "flags.final_mission_attempted",
+            "op": "==",
+            "value": true
+          }
+        ]
+      },
+      "tag": "fallback"
+    }
+  ]
+}

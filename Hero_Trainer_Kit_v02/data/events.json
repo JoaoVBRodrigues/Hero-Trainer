@@ -1,0 +1,469 @@
+{
+  "schema_version": 2,
+  "notes": "Eventos iniciais v0.1 mantidos para comparação, mas devem ser reavaliados; os novos eventos v0.2 representam as motivações corretas. Exige que motor suporte route_state antes de habilitar gatilhos associados.",
+  "events": [
+    {
+      "id": "hori_infirmary_w03",
+      "campaign": "hori",
+      "title": "A última a sair",
+      "window": {
+        "week_min": 3,
+        "week_max": 6
+      },
+      "priority": 20,
+      "repeatable": false,
+      "trigger": {
+        "all": [
+          {
+            "path": "resources.stress",
+            "op": ">=",
+            "value": 30
+          },
+          {
+            "path": "flags.hori_infirmary_seen",
+            "op": "==",
+            "value": false
+          }
+        ]
+      },
+      "dialogue": [
+        {
+          "speaker": "instructor",
+          "text": "Você está aqui desde ontem?"
+        },
+        {
+          "speaker": "hori",
+          "text": "Eu estava revisando o relatório. A última coisa que precisamos é repetir o erro."
+        },
+        {
+          "speaker": "instructor",
+          "text": "E a primeira coisa de que você precisa é dormir."
+        },
+        {
+          "speaker": "hori",
+          "text": "...Não prometo nada."
+        }
+      ],
+      "choices": [
+        {
+          "id": "ask_for_help",
+          "label": "Chamar Luppi para dividir a revisão.",
+          "effects": {
+            "axes_delta": {
+              "solidarity": 8
+            },
+            "bonds_delta": {
+              "luppi": 5
+            },
+            "resources_delta": {
+              "stress": -5
+            },
+            "flags_set": {
+              "hori_accepted_help": true,
+              "hori_infirmary_seen": true
+            }
+          }
+        },
+        {
+          "id": "offer_time",
+          "label": "Reservar um bloco para revisar o relatório junto dela.",
+          "effects": {
+            "axes_delta": {
+              "integrity": 4
+            },
+            "bonds_delta": {
+              "instructor": 5
+            },
+            "resources_delta": {
+              "stress": -3
+            },
+            "flags_set": {
+              "hori_infirmary_seen": true
+            }
+          }
+        },
+        {
+          "id": "let_her_choose",
+          "label": "Oferecer ajuda e respeitar a resposta.",
+          "effects": {
+            "axes_delta": {
+              "autonomy": 8
+            },
+            "resources_delta": {
+              "mood": 2
+            },
+            "flags_set": {
+              "hori_infirmary_seen": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "shared_mission_w08",
+      "campaign": "all",
+      "title": "Observatório Silencioso",
+      "window": {
+        "week_min": 8,
+        "week_max": 8
+      },
+      "priority": 100,
+      "repeatable": false,
+      "trigger": {
+        "all": [
+          {
+            "path": "flags.observatory_complete",
+            "op": "==",
+            "value": false
+          }
+        ]
+      },
+      "mission_id": "observatory_rescue",
+      "choices": [
+        {
+          "id": "rescue",
+          "label": "Priorizar evacuação",
+          "effects": {
+            "axes_delta": {
+              "solidarity": 8
+            },
+            "flags_set": {
+              "observatory_complete": true,
+              "rescue_priority": true
+            }
+          }
+        },
+        {
+          "id": "data",
+          "label": "Priorizar dados científicos",
+          "effects": {
+            "axes_delta": {
+              "ambition": 6
+            },
+            "flags_set": {
+              "observatory_complete": true,
+              "research_priority": true
+            }
+          }
+        },
+        {
+          "id": "split",
+          "label": "Dividir a equipe e tentar ambos",
+          "effects": {
+            "axes_delta": {
+              "autonomy": 4
+            },
+            "flags_set": {
+              "observatory_complete": true,
+              "split_team": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "ray_orphanage_remittance_w02",
+      "campaign": "ray",
+      "title": "A transferência da semana",
+      "window": {
+        "week_min": 2,
+        "week_max": 3
+      },
+      "priority": 50,
+      "repeatable": false,
+      "trigger": {
+        "all": [
+          {
+            "path": "flags.ray_orphanage_remittance_w02_seen",
+            "op": "==",
+            "value": false
+          }
+        ]
+      },
+      "dialogue": [
+        {
+          "speaker": "ray",
+          "text": "A transferência saiu?"
+        },
+        {
+          "speaker": "instructor",
+          "text": "Você ainda precisa pagar o material do laboratório."
+        },
+        {
+          "speaker": "ray",
+          "text": "As duas coisas têm prazo."
+        }
+      ],
+      "choices": [
+        {
+          "id": "send",
+          "label": "Negociar uma remessa maior e buscar bolsa",
+          "effects": {
+            "flags_set": {
+              "ray_orphanage_remittance_w02_seen": true,
+              "ray_sought_scholarship": true
+            },
+            "axes_delta": {
+              "solidarity": 5
+            }
+          }
+        },
+        {
+          "id": "reserve",
+          "label": "Manter dinheiro para o treinamento e explicar a situação",
+          "effects": {
+            "flags_set": {
+              "ray_orphanage_remittance_w02_seen": true,
+              "ray_communicated_limits": true
+            },
+            "axes_delta": {
+              "integrity": 5
+            }
+          }
+        },
+        {
+          "id": "contract",
+          "label": "Buscar trabalho remunerado adicional com avaliação de risco",
+          "effects": {
+            "flags_set": {
+              "ray_orphanage_remittance_w02_seen": true,
+              "ray_seeks_safe_work": true
+            },
+            "axes_delta": {
+              "ambition": 5
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "luppi_training_order_w03",
+      "campaign": "luppi",
+      "title": "A ordem incompleta",
+      "window": {
+        "week_min": 3,
+        "week_max": 4
+      },
+      "priority": 50,
+      "repeatable": false,
+      "trigger": {
+        "all": [
+          {
+            "path": "flags.luppi_training_order_w03_seen",
+            "op": "==",
+            "value": false
+          }
+        ]
+      },
+      "dialogue": [
+        {
+          "speaker": "instructor",
+          "text": "Segure a entrada principal."
+        },
+        {
+          "speaker": "luppi",
+          "text": "Principal por tamanho ou por probabilidade de ataque?"
+        },
+        {
+          "speaker": "instructor",
+          "text": "Boa pergunta."
+        }
+      ],
+      "choices": [
+        {
+          "id": "clarify",
+          "label": "Explicar objetivo e pedir plano dela",
+          "effects": {
+            "flags_set": {
+              "luppi_training_order_w03_seen": true,
+              "luppi_asked_clarification": true
+            },
+            "axes_delta": {
+              "autonomy": 6
+            }
+          }
+        },
+        {
+          "id": "brief",
+          "label": "Dar um plano direto e específico",
+          "effects": {
+            "flags_set": {
+              "luppi_training_order_w03_seen": true,
+              "luppi_received_clear_order": true
+            },
+            "axes_delta": {
+              "integrity": 4
+            }
+          }
+        },
+        {
+          "id": "initiative",
+          "label": "Permitir que Luppi proponha a defesa",
+          "effects": {
+            "flags_set": {
+              "luppi_training_order_w03_seen": true,
+              "luppi_proposed_plan": true
+            },
+            "axes_delta": {
+              "autonomy": 8
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "hori_face_clues_w02",
+      "campaign": "hori",
+      "title": "Um rosto conhecido?",
+      "window": {
+        "week_min": 2,
+        "week_max": 3
+      },
+      "priority": 50,
+      "repeatable": false,
+      "trigger": {
+        "all": [
+          {
+            "path": "flags.hori_face_clues_w02_seen",
+            "op": "==",
+            "value": false
+          }
+        ]
+      },
+      "dialogue": [
+        {
+          "speaker": "hori",
+          "text": "Você mudou o cabelo?"
+        },
+        {
+          "speaker": "friend",
+          "text": "Hori... sou eu."
+        },
+        {
+          "speaker": "hori",
+          "text": "Eu sei! Quer dizer... talvez."
+        },
+        {
+          "speaker": "friend",
+          "text": "Você podia ter perguntado."
+        }
+      ],
+      "choices": [
+        {
+          "id": "ask",
+          "label": "Perguntar que sinais ajudam Hori a reconhecer a amiga",
+          "effects": {
+            "flags_set": {
+              "hori_face_clues_w02_seen": true,
+              "hori_identification_aid": true
+            },
+            "axes_delta": {
+              "solidarity": 6
+            }
+          }
+        },
+        {
+          "id": "private",
+          "label": "Conversar a sós, sem forçar explicações",
+          "effects": {
+            "flags_set": {
+              "hori_face_clues_w02_seen": true,
+              "hori_private_conversation": true
+            },
+            "axes_delta": {
+              "integrity": 4
+            }
+          }
+        },
+        {
+          "id": "reassure",
+          "label": "Deixar que Hori decida como abordar o assunto",
+          "effects": {
+            "flags_set": {
+              "hori_face_clues_w02_seen": true,
+              "hori_decided_response": true
+            },
+            "axes_delta": {
+              "autonomy": 6
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "hori_core_protocol_w06",
+      "campaign": "hori",
+      "title": "Protocolo de segurança",
+      "window": {
+        "week_min": 6,
+        "week_max": 7
+      },
+      "priority": 50,
+      "repeatable": false,
+      "trigger": {
+        "all": [
+          {
+            "path": "flags.hori_core_protocol_w06_seen",
+            "op": "==",
+            "value": false
+          }
+        ]
+      },
+      "dialogue": [
+        {
+          "speaker": "hori",
+          "text": "Se eu rir, parece menos assustador."
+        },
+        {
+          "speaker": "instructor",
+          "text": "O protocolo continua valendo mesmo quando você sorri."
+        },
+        {
+          "speaker": "hori",
+          "text": "Justo."
+        }
+      ],
+      "choices": [
+        {
+          "id": "team",
+          "label": "Revisar plano de contenção com equipe de confiança",
+          "effects": {
+            "flags_set": {
+              "hori_core_protocol_w06_seen": true,
+              "hori_core_team_protocol": true
+            },
+            "axes_delta": {
+              "solidarity": 6
+            }
+          }
+        },
+        {
+          "id": "lab",
+          "label": "Praticar contenção com limites e especialistas",
+          "effects": {
+            "flags_set": {
+              "hori_core_protocol_w06_seen": true,
+              "hori_core_lab_protocol": true
+            },
+            "axes_delta": {
+              "integrity": 6
+            }
+          }
+        },
+        {
+          "id": "choice",
+          "label": "Oferecer opções e deixar Hori escolher",
+          "effects": {
+            "flags_set": {
+              "hori_core_protocol_w06_seen": true,
+              "hori_core_agency": true
+            },
+            "axes_delta": {
+              "autonomy": 6
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

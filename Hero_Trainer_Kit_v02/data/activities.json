@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "calendaring": {"total_weeks": 16, "action_blocks_per_week": 3},
+  "stat_cap": 100,
+  "resource_cap": 100,
+  "training_failure_formula": "clamp(0,60,round(max(0,35-energy)*0.9+stress*0.2+injury_level*12-mentor_bonus))",
+  "notes": "Sinais positivos aumentam a variável; negativos reduzem. Dados de demonstração; nenhum custo monetário real ou IA runtime.",
+  "activities": [
+    {"id": "combat", "label": "Treinamento de combate", "category": "training", "stats_delta": {"pot": 5, "tec": 2}, "resource_delta": {"energy": -15, "stress": 6}, "can_fail": true, "mentor_affinity": "combat"},
+    {"id": "lab", "label": "Estudo no laboratório", "category": "training", "stats_delta": {"teo": 5, "sin": 2}, "resource_delta": {"energy": -10, "stress": 4}, "can_fail": true, "mentor_affinity": "lab"},
+    {"id": "control", "label": "Controle de energia", "category": "training", "stats_delta": {"sin": 5, "tec": 2}, "resource_delta": {"energy": -13, "stress": 5}, "can_fail": true, "mentor_affinity": "control"},
+    {"id": "conditioning", "label": "Condicionamento físico", "category": "training", "stats_delta": {"res": 5, "pot": 1}, "resource_delta": {"energy": -13, "stress": 3}, "can_fail": true, "mentor_affinity": "conditioning"},
+    {"id": "rest", "label": "Descanso e lazer", "category": "recovery", "stats_delta": {}, "resource_delta": {"energy": 25, "stress": -12, "mood": 8}, "can_fail": false, "mentor_affinity": null},
+    {"id": "internship", "label": "Estágio de apoio", "category": "work", "stats_delta": {}, "resource_delta": {"credits": 25, "reputation": 1, "energy": -8, "stress": 4}, "can_fail": false, "mentor_affinity": null},
+    {"id": "bond_ray", "label": "Conversa com Ray", "category": "relationship", "stats_delta": {}, "resource_delta": {"stress": -4}, "bond_delta": {"ray": 8}, "can_fail": false, "mentor_affinity": null},
+    {"id": "bond_luppi", "label": "Tempo com Luppi", "category": "relationship", "stats_delta": {}, "resource_delta": {"stress": -4}, "bond_delta": {"luppi": 8}, "can_fail": false, "mentor_affinity": null}
+  ]
+}
