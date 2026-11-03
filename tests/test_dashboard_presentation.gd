@@ -126,6 +126,7 @@ func test_hori_position_modes_preserve_aspect_and_campaign_state() -> void:
 		dashboard.set("_narrative_mode", &"event_dialogue")
 
 		dashboard.call("_hide_narrative_overlay")
+		_finish_narrative_transition(dashboard, false)
 		dashboard.call("_update_hori_presentation")
 		assert_false(overlay.visible, "narrative overlay should close")
 		assert_true(hub_ui.visible, "hub should return after narrative mode")
@@ -292,6 +293,7 @@ func test_hub_navigation_and_state_binding() -> void:
 		"existing narrative choice should resolve normally"
 	)
 	dashboard.call("_on_narrative_continue_pressed")
+	_finish_narrative_transition(dashboard, false)
 	assert_true(hub_ui.visible, "completing an event should return to the Hub")
 	assert_false(
 		(dashboard.get("_narrative_overlay") as Control).visible,
@@ -953,8 +955,18 @@ func test_training_screen_previews_and_applies_service_results() -> void:
 		"narrative choices should still resolve after training"
 	)
 	dashboard.call("_on_narrative_continue_pressed")
+	_finish_narrative_transition(dashboard, false)
 	assert_true(hub_ui.visible, "closing the event should return to the Hub")
 	assert_false(training_ui.visible, "training should remain hidden after the event")
+	var status_bars: Dictionary[StringName, ProgressBar] = dashboard.get(
+		"_status_stat_bars"
+	)
+	for stat_id: StringName in TrainingState.ATTRIBUTE_IDS:
+		assert_eq(
+			int(status_bars[stat_id].value),
+			int(state.stats[stat_id]),
+			"result animations should finish exactly at the service state"
+		)
 	assert_eq(
 		state.actions_remaining,
 		actions_before_event,
@@ -1001,6 +1013,204 @@ func test_training_screen_previews_and_applies_service_results() -> void:
 		rng_before_deterministic,
 		"deterministic confirmation should not advance RNG"
 	)
+
+
+func test_ui_motion_feedback_and_navigation_preserve_campaign_state() -> void:
+	var training: TrainingService = TrainingServiceScript.new()
+	assert_true(training.load_project_data(), "training data should load")
+	var narrative: NarrativeService = NarrativeServiceScript.new()
+	narrative.set_limits(
+		training.get_attribute_cap(),
+		training.get_resource_cap(),
+		training.get_reputation_cap(),
+		training.get_bond_cap()
+	)
+	assert_true(narrative.load_project_data(), "narrative data should load")
+
+	var dashboard: Control = DashboardScript.new()
+	track(dashboard)
+	dashboard.set("_service", training)
+	dashboard.set("_narrative_service", narrative)
+	dashboard.size = Vector2(1280, 720)
+	dashboard.call("_load_phase3_assets")
+	dashboard.call("_build_interface")
+	var state: TrainingState = training.create_initial_state()
+	dashboard.set("_state", state)
+	dashboard.call("_refresh_state")
+
+	var state_before: TrainingState = state.duplicate_state()
+	var nav_buttons: Dictionary[StringName, Button] = dashboard.get("_hub_nav_buttons")
+	var transition_overlay: Control = dashboard.get("_transition_overlay")
+	var target_areas: Dictionary[StringName, Control] = {
+		&"training": dashboard.get("_training_ui"),
+		&"status": dashboard.get("_status_ui"),
+		&"relationships": dashboard.get("_relationships_ui"),
+		&"hub": dashboard.get("_hub_ui"),
+	}
+	for area: StringName in [
+		&"training",
+		&"status",
+		&"relationships",
+		&"hub",
+	]:
+		nav_buttons[area].pressed.emit()
+		assert_eq(
+			dashboard.get("_current_area"),
+			area,
+			"navigation should update the selected area immediately"
+		)
+		assert_true(
+			(target_areas[area] as Control).visible,
+			"the requested area should be visible during its transition"
+		)
+		var visible_area_count: int = 0
+		for screen: Control in target_areas.values():
+			if screen.visible:
+				visible_area_count += 1
+		assert_eq(
+			visible_area_count,
+			1,
+			"rapid navigation should never leave multiple areas interactive"
+		)
+		assert_true(
+			transition_overlay.visible,
+			"area changes should show the short transition blocker"
+		)
+
+	_finish_area_transition(dashboard)
+	assert_false(
+		transition_overlay.visible,
+		"the transition blocker should release the interface when the fade ends"
+	)
+	assert_eq(state.stats, state_before.stats)
+	assert_eq(state.axes, state_before.axes)
+	assert_eq(state.bonds, state_before.bonds)
+	assert_eq(state.energy, state_before.energy)
+	assert_eq(state.actions_remaining, state_before.actions_remaining)
+	assert_eq(state.week, state_before.week)
+	assert_eq(state.rng_state, state_before.rng_state)
+
+	var activity_cards: Dictionary[StringName, Button] = dashboard.get("_training_cards")
+	var button: Button = activity_cards[&"control"]
+	assert_true(
+		button.has_meta("ui_feedback_wired"),
+		"training activity cards should use the shared button feedback"
+	)
+	var button_theme: Theme = dashboard.theme
+	assert_true(
+		button_theme.has_stylebox("focus", "Button"),
+		"the shared theme should expose a keyboard focus style"
+	)
+	var focus_style: StyleBoxFlat = button_theme.get_stylebox(
+		"focus",
+		"Button"
+	) as StyleBoxFlat
+	assert_true(
+		focus_style.get_border_width(SIDE_LEFT) > 0
+		and focus_style.border_color.a > 0.9,
+		"keyboard focus should retain a visible outline"
+	)
+	dashboard.call("_on_button_feedback_changed", button, &"hovered", true)
+	assert_ne(
+		button.get_meta("ui_feedback_hovered"),
+		false,
+		"hover feedback should track pointer focus"
+	)
+	assert_true(
+		(button.get_meta("ui_feedback_tween") as Tween).is_running(),
+		"hover feedback should use a short reusable Tween"
+	)
+	dashboard.call("_on_button_feedback_changed", button, &"hovered", false)
+
+	nav_buttons[&"training"].pressed.emit()
+	_finish_area_transition(dashboard)
+	dashboard.call("_on_activity_selected", &"control")
+	assert_true(button.button_pressed, "selected training should use its pressed card state")
+	assert_eq(state.actions_remaining, state_before.actions_remaining)
+	assert_eq(state.rng_state, state_before.rng_state)
+	assert_eq(state.stats, state_before.stats)
+
+	var bond_state_before: TrainingState = state.duplicate_state()
+	var bond_result: TrainingPreview = training.apply_activity(state, &"bond_ray")
+	assert_true(bond_result.is_valid, "the configured social activity should be applicable")
+	dashboard.call("_refresh_state")
+	dashboard.call(
+		"_animate_result_indicators",
+		bond_state_before,
+		bond_result.result
+	)
+	var ray_card: Dictionary = (
+		(dashboard.get("_relationship_cards") as Dictionary)[&"ray"]
+	)
+	var ray_bar: ProgressBar = ray_card["bar"]
+	assert_eq(
+		int(ray_bar.value),
+		int(bond_state_before.bonds[&"ray"]),
+		"relationship animation should begin at the pre-activity value"
+	)
+	assert_true(
+		ray_bar.has_meta("result_bar_tween"),
+		"changed bonds should create a visual Tween"
+	)
+	var ray_tween: Tween = ray_bar.get_meta("result_bar_tween")
+	ray_tween.kill()
+	dashboard.call("_finish_result_bar", ray_bar, int(state.bonds[&"ray"]))
+	assert_eq(
+		int(ray_bar.value),
+		int(state.bonds[&"ray"]),
+		"relationship animation should end at the real TrainingState value"
+	)
+
+	dashboard.call("_show_narrative_overlay")
+	var overlay: Control = dashboard.get("_narrative_overlay")
+	assert_true(overlay.visible, "narrative overlays should keep immediate priority")
+	assert_eq(
+		overlay.mouse_filter,
+		Control.MOUSE_FILTER_STOP,
+		"narrative overlays should prevent clicks reaching the underlying screen"
+	)
+	_finish_narrative_transition(dashboard, true)
+	dashboard.call("_hide_narrative_overlay")
+	assert_true(overlay.visible, "narrative close should fade before releasing the screen")
+	_finish_narrative_transition(dashboard, false)
+	assert_false(overlay.visible, "narrative close should finish its fade")
+	assert_true((dashboard.get("_hub_ui") as Control).visible)
+
+	var previous_reduce_motion: Variant = ProjectSettings.get_setting(
+		"accessibility/reduce_motion",
+		false
+	)
+	ProjectSettings.set_setting("accessibility/reduce_motion", true)
+	nav_buttons[&"training"].pressed.emit()
+	assert_false(
+		transition_overlay.visible,
+		"reduced motion should skip the navigation fade"
+	)
+	dashboard.call("_show_narrative_overlay")
+	assert_false(
+		dashboard.get("_narrative_transition") != null,
+		"reduced motion should skip the narrative fade"
+	)
+	dashboard.call("_hide_narrative_overlay")
+	assert_false(overlay.visible, "reduced motion should close overlays immediately")
+	ProjectSettings.set_setting(
+		"accessibility/reduce_motion",
+		previous_reduce_motion
+	)
+
+
+func _finish_area_transition(dashboard: Control) -> void:
+	var tween: Tween = dashboard.get("_area_transition")
+	if tween != null and tween.is_running():
+		tween.kill()
+	dashboard.call("_finish_area_transition", dashboard.get("_current_area"))
+
+
+func _finish_narrative_transition(dashboard: Control, open: bool) -> void:
+	var tween: Tween = dashboard.get("_narrative_transition")
+	if tween != null and tween.is_running():
+		tween.kill()
+	dashboard.call("_finish_narrative_transition", open)
 
 
 func _assert_character_layout(

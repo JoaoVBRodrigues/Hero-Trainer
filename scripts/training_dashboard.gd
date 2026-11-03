@@ -36,6 +36,10 @@ const STAT_SHORT_LABELS: Dictionary[StringName, String] = {
 	&"teo": "TEO",
 	&"sin": "SIN",
 }
+const AREA_TRANSITION_IN_DURATION: float = 0.07
+const AREA_TRANSITION_OUT_DURATION: float = 0.13
+const NARRATIVE_TRANSITION_DURATION: float = 0.16
+const RESULT_BAR_ANIMATION_DURATION: float = 0.28
 
 enum HoriPresentation { RIGHT_SIDE, CENTER_STAGE, STATUS_SIDE }
 
@@ -47,6 +51,10 @@ var _hori_presentation: HoriPresentation = HoriPresentation.RIGHT_SIDE
 var _current_area: StringName = &"hub"
 var _scene_textures: Dictionary[StringName, Texture2D] = {}
 var _hori_expression_textures: Dictionary[StringName, Texture2D] = {}
+var _area_transition: Tween
+var _narrative_transition: Tween
+var _transition_overlay: ColorRect
+var _narrative_flow_pending: bool = false
 var _background: TextureRect
 var _character_stage: Control
 var _management_ui: Control
@@ -64,8 +72,10 @@ var _status_scroll: ScrollContainer
 var _status_attribute_grid: GridContainer
 var _status_stat_values: Dictionary[StringName, Label] = {}
 var _status_stat_bars: Dictionary[StringName, ProgressBar] = {}
+var _status_stat_cards: Dictionary[StringName, Control] = {}
 var _status_resource_values: Dictionary[StringName, Label] = {}
 var _status_resource_bars: Dictionary[StringName, ProgressBar] = {}
+var _status_resource_cards: Dictionary[StringName, Control] = {}
 var _status_credits_value: Label
 var _status_reputation_value: Label
 var _status_nav_buttons: Dictionary[StringName, Button] = {}
@@ -308,8 +318,99 @@ func _build_interface() -> void:
 	_build_training_screen()
 	_build_status_screen()
 	_build_relationships_screen()
+	_build_transition_overlay()
 	_build_narrative_overlay()
+	_install_button_feedback(self)
 	_management_ui.visible = false
+
+
+func _build_transition_overlay() -> void:
+	_transition_overlay = ColorRect.new()
+	_transition_overlay.color = Color(TrainingThemeScript.INK, 0.0)
+	_transition_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_transition_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	_transition_overlay.visible = false
+	add_child(_transition_overlay)
+
+
+func _install_button_feedback(root: Node) -> void:
+	for node: Node in root.find_children("*", "Button", true, false):
+		_wire_button_feedback(node as Button)
+
+
+func _wire_button_feedback(button: Button) -> void:
+	if button == null or button.has_meta("ui_feedback_wired"):
+		return
+	button.set_meta("ui_feedback_wired", true)
+	button.set_meta("ui_feedback_hovered", false)
+	button.set_meta("ui_feedback_focused", false)
+	button.set_meta("ui_feedback_pressed", false)
+	button.mouse_entered.connect(
+		_on_button_feedback_changed.bind(button, &"hovered", true)
+	)
+	button.mouse_exited.connect(
+		_on_button_feedback_changed.bind(button, &"hovered", false)
+	)
+	button.focus_entered.connect(
+		_on_button_feedback_changed.bind(button, &"focused", true)
+	)
+	button.focus_exited.connect(
+		_on_button_feedback_changed.bind(button, &"focused", false)
+	)
+	button.button_down.connect(
+		_on_button_feedback_changed.bind(button, &"pressed", true)
+	)
+	button.button_up.connect(
+		_on_button_feedback_changed.bind(button, &"pressed", false)
+	)
+
+
+func _on_button_feedback_changed(
+	button: Button,
+	state_name: StringName,
+	active: bool
+) -> void:
+	if not is_instance_valid(button):
+		return
+	button.set_meta("ui_feedback_" + String(state_name), active)
+	_animate_button_feedback(button)
+
+
+func _animate_button_feedback(button: Button) -> void:
+	if not is_instance_valid(button):
+		return
+	_kill_control_tween(button, "ui_feedback_tween")
+	if button.disabled:
+		button.modulate = Color.WHITE
+		return
+	var emphasized: bool = (
+		bool(button.get_meta("ui_feedback_hovered", false))
+		or bool(button.get_meta("ui_feedback_focused", false))
+	)
+	var pressed: bool = bool(button.get_meta("ui_feedback_pressed", false))
+	var target_color := Color.WHITE
+	if pressed:
+		target_color = Color(0.92, 0.95, 1.0, 1.0)
+	elif emphasized:
+		target_color = Color(1.05, 1.05, 1.02, 1.0)
+	if _reduce_motion_enabled():
+		button.modulate = target_color
+		return
+	var tween := create_tween()
+	button.set_meta("ui_feedback_tween", tween)
+	tween.tween_property(button, "modulate", target_color, 0.10)
+
+
+func _kill_control_tween(control: Control, meta_name: String) -> void:
+	if not is_instance_valid(control) or not control.has_meta(meta_name):
+		return
+	var current_tween: Variant = control.get_meta(meta_name)
+	if current_tween is Tween and current_tween.is_running():
+		current_tween.kill()
+
+
+func _reduce_motion_enabled() -> bool:
+	return bool(ProjectSettings.get_setting("accessibility/reduce_motion", false))
 
 
 func _build_header() -> PanelContainer:
@@ -1368,6 +1469,7 @@ func _build_status_screen() -> void:
 		_status_attribute_grid.add_child(card)
 		_status_stat_values[stat_id] = value_label
 		_status_stat_bars[stat_id] = bar
+		_status_stat_cards[stat_id] = card
 
 	content.add_child(_make_section_title("CONDIÇÃO ATUAL"))
 	var resource_grid := GridContainer.new()
@@ -1501,6 +1603,7 @@ func _add_status_resource_card(
 	parent.add_child(card)
 	_status_resource_values[resource_id] = value_label
 	_status_resource_bars[resource_id] = bar
+	_status_resource_cards[resource_id] = card
 
 
 func _add_status_economy_card(
@@ -2280,6 +2383,7 @@ func _update_training_preview(
 		if not success_changes.is_empty()
 		else "Sem alteração direta de atributos ou recursos."
 	)
+	_pulse_ui_control(_training_success_panel, TrainingThemeScript.MINT)
 	if preview.can_fail:
 		_training_preview_status.text = (
 			"RISCO · %d%% falha · 1 bloco ao confirmar"
@@ -2290,6 +2394,7 @@ func _update_training_preview(
 			TrainingThemeScript.GOLD
 		)
 		_training_failure_panel.visible = true
+		_pulse_ui_control(_training_failure_panel, TrainingThemeScript.CORAL)
 		_training_failure_title.text = "FALHA · %d%%" % preview.failure_chance_percent
 		var failure_changes: PackedStringArray = _format_compact_state_changes(
 			_state,
@@ -2373,7 +2478,129 @@ func _show_training_result(
 	_training_preview_detail.text = (
 		"Alterações aplicadas · custo de energia e demais efeitos já refletidos."
 	)
+	_animate_result_indicators(state_before, applied.result)
+	_pulse_ui_control(_training_result_label, result_color)
 	_update_training_layout()
+
+
+func _animate_result_indicators(
+	state_before: TrainingState,
+	state_after: TrainingState
+) -> void:
+	if state_before == null or state_after == null:
+		return
+	for stat_id: StringName in TrainingState.ATTRIBUTE_IDS:
+		var before_value: int = int(state_before.stats[stat_id])
+		var after_value: int = int(state_after.stats[stat_id])
+		if before_value == after_value:
+			continue
+		var accent: Color = (
+			TrainingThemeScript.MINT
+			if after_value > before_value
+			else TrainingThemeScript.CORAL
+		)
+		if _status_stat_bars.has(stat_id):
+			_animate_result_bar(
+				_status_stat_bars[stat_id],
+				before_value,
+				after_value
+			)
+			_pulse_ui_control(_status_stat_cards[stat_id], accent)
+		if _stat_bars.has(stat_id):
+			_animate_result_bar(_stat_bars[stat_id], before_value, after_value)
+
+	for resource_id: StringName in [&"energy", &"stress", &"motivation"]:
+		var before_value: int = _training_resource_value(state_before, resource_id)
+		var after_value: int = _training_resource_value(state_after, resource_id)
+		if before_value == after_value:
+			continue
+		var accent: Color = (
+			TrainingThemeScript.MINT
+			if after_value > before_value
+			else TrainingThemeScript.CORAL
+		)
+		for bars: Dictionary[StringName, ProgressBar] in [
+			_resource_bars,
+			_training_resource_bars,
+			_hub_resource_bars,
+			_status_resource_bars,
+		]:
+			if bars.has(resource_id):
+				_animate_result_bar(bars[resource_id], before_value, after_value)
+		if _status_resource_cards.has(resource_id):
+			_pulse_ui_control(_status_resource_cards[resource_id], accent)
+
+	for bond_id: StringName in state_before.bonds:
+		var before_value: int = int(state_before.bonds[bond_id])
+		var after_value: int = int(state_after.bonds.get(bond_id, before_value))
+		if before_value == after_value or not _relationship_cards.has(bond_id):
+			continue
+		var card: Dictionary = _relationship_cards[bond_id]
+		_animate_result_bar(card["bar"], before_value, after_value)
+		_pulse_ui_control(
+			card["panel"],
+			TrainingThemeScript.MINT
+			if after_value > before_value
+			else TrainingThemeScript.CORAL
+		)
+
+
+func _animate_result_bar(
+	bar: ProgressBar,
+	before_value: int,
+	after_value: int
+) -> void:
+	if bar == null or not is_instance_valid(bar) or before_value == after_value:
+		return
+	var current_tween: Variant = (
+		bar.get_meta("result_bar_tween")
+		if bar.has_meta("result_bar_tween")
+		else null
+	)
+	if current_tween is Tween and current_tween.is_running():
+		current_tween.kill()
+	bar.value = before_value
+	if _reduce_motion_enabled():
+		bar.value = after_value
+		return
+	var tween := create_tween()
+	bar.set_meta("result_bar_tween", tween)
+	tween.tween_property(
+		bar,
+		"value",
+		float(after_value),
+		RESULT_BAR_ANIMATION_DURATION
+	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.tween_callback(_finish_result_bar.bind(bar, after_value))
+
+
+func _finish_result_bar(bar: ProgressBar, final_value: int) -> void:
+	if is_instance_valid(bar):
+		bar.value = final_value
+
+
+func _pulse_ui_control(control: Control, accent: Color) -> void:
+	if control == null or not is_instance_valid(control):
+		return
+	var current_tween: Variant = (
+		control.get_meta("ui_pulse_tween")
+		if control.has_meta("ui_pulse_tween")
+		else null
+	)
+	if current_tween is Tween and current_tween.is_running():
+		current_tween.kill()
+	control.modulate = Color.WHITE
+	if not is_inside_tree() or _reduce_motion_enabled():
+		return
+	var tween := create_tween()
+	control.set_meta("ui_pulse_tween", tween)
+	tween.tween_property(
+		control,
+		"modulate",
+		Color.WHITE.lerp(accent, 0.15),
+		0.08
+	)
+	tween.tween_property(control, "modulate", Color.WHITE, 0.24)
 
 
 func _reset_training_selection(
@@ -2717,6 +2944,76 @@ func _on_hub_navigation_pressed(area: StringName) -> void:
 		_show_management_area(area)
 
 
+func _control_for_area(area: StringName) -> Control:
+	match area:
+		&"hub":
+			return _hub_ui
+		&"training":
+			return _training_ui
+		&"status":
+			return _status_ui
+		&"relationships":
+			return _relationships_ui
+		_:
+			return _management_ui
+
+
+func _set_visible_area(area: StringName) -> void:
+	_hub_ui.visible = area == &"hub"
+	_training_ui.visible = area == &"training"
+	_status_ui.visible = area == &"status"
+	_relationships_ui.visible = area == &"relationships"
+	_management_ui.visible = (
+		area != &"hub"
+		and area != &"training"
+		and area != &"status"
+		and area != &"relationships"
+	)
+
+
+func _cancel_area_transition() -> void:
+	if _area_transition != null and _area_transition.is_running():
+		_area_transition.kill()
+	_area_transition = null
+	if _transition_overlay != null:
+		_transition_overlay.visible = false
+		_transition_overlay.color = Color(TrainingThemeScript.INK, 0.0)
+
+
+func _transition_to_area(previous_area: StringName, next_area: StringName) -> void:
+	_cancel_area_transition()
+	_set_visible_area(next_area)
+	if (
+		previous_area == next_area
+		or _transition_overlay == null
+		or _reduce_motion_enabled()
+	):
+		return
+	_transition_overlay.color = Color(TrainingThemeScript.INK, 0.0)
+	_transition_overlay.visible = true
+	_area_transition = create_tween()
+	_area_transition.tween_property(
+		_transition_overlay,
+		"color:a",
+		0.22,
+		AREA_TRANSITION_IN_DURATION
+	)
+	_area_transition.tween_property(
+		_transition_overlay,
+		"color:a",
+		0.0,
+		AREA_TRANSITION_OUT_DURATION
+	)
+	_area_transition.tween_callback(_finish_area_transition.bind(next_area))
+
+
+func _finish_area_transition(area: StringName) -> void:
+	if _current_area == area and _transition_overlay != null:
+		_transition_overlay.visible = false
+		_transition_overlay.color = Color(TrainingThemeScript.INK, 0.0)
+	_area_transition = null
+
+
 func _show_management_area(area: StringName) -> void:
 	if _narrative_overlay != null and _narrative_overlay.visible:
 		return
@@ -2734,15 +3031,6 @@ func _show_management_area(area: StringName) -> void:
 			"Escolha uma atividade para comparar efeitos e disponibilidade."
 		)
 	_current_area = area
-	_hub_ui.visible = false
-	_training_ui.visible = area == &"training"
-	_relationships_ui.visible = area == &"relationships"
-	_status_ui.visible = area == &"status"
-	_management_ui.visible = (
-		area != &"training"
-		and area != &"status"
-		and area != &"relationships"
-	)
 	if area == &"status":
 		_update_status_state()
 	elif area == &"relationships":
@@ -2757,6 +3045,7 @@ func _show_management_area(area: StringName) -> void:
 		if area in [&"status", &"relationships"]
 		else HoriPresentation.RIGHT_SIDE
 	)
+	_transition_to_area(previous_area, area)
 	call_deferred("_focus_management_area", area)
 
 
@@ -2779,6 +3068,7 @@ func _focus_management_area(area: StringName) -> void:
 func _show_hub() -> void:
 	if _narrative_overlay != null and _narrative_overlay.visible:
 		return
+	var previous_area: StringName = _current_area
 	if _current_area == &"training":
 		_reset_training_selection(
 			"PLANEJAMENTO",
@@ -2786,16 +3076,13 @@ func _show_hub() -> void:
 			"A prévia foi encerrada sem alterar a campanha."
 		)
 	_current_area = &"hub"
-	_hub_ui.visible = true
-	_management_ui.visible = false
-	_training_ui.visible = false
-	_status_ui.visible = false
-	_relationships_ui.visible = false
 	_set_scene_context(&"academy")
 	_set_hori_presentation(HoriPresentation.RIGHT_SIDE)
 	_update_hub_state()
 	_update_training_navigation()
 	_update_status_navigation()
+	_update_relationships_navigation()
+	_transition_to_area(previous_area, &"hub")
 
 
 func _update_hub_state() -> void:
@@ -2871,6 +3158,7 @@ func _build_narrative_overlay() -> void:
 	_narrative_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	_narrative_overlay.visible = false
 	_narrative_overlay.z_index = 10
+	_narrative_overlay.modulate.a = 1.0
 	add_child(_narrative_overlay)
 
 	var shade := ColorRect.new()
@@ -3066,6 +3354,12 @@ func _update_hori_presentation() -> void:
 
 
 func _show_narrative_overlay() -> void:
+	_cancel_area_transition()
+	if _narrative_transition != null and _narrative_transition.is_running():
+		_narrative_transition.kill()
+	_narrative_transition = null
+	if not _narrative_overlay.visible:
+		_narrative_overlay.modulate.a = 0.0
 	_set_hori_presentation(HoriPresentation.CENTER_STAGE)
 	_update_narrative_panel_layout()
 	_management_ui.visible = false
@@ -3074,10 +3368,25 @@ func _show_narrative_overlay() -> void:
 	_status_ui.visible = false
 	_relationships_ui.visible = false
 	_narrative_overlay.visible = true
+	if _reduce_motion_enabled():
+		_narrative_overlay.modulate.a = 1.0
+		return
+	_narrative_transition = create_tween()
+	_narrative_transition.tween_property(
+		_narrative_overlay,
+		"modulate:a",
+		1.0,
+		NARRATIVE_TRANSITION_DURATION
+	)
+	_narrative_transition.tween_callback(
+		_finish_narrative_transition.bind(true)
+	)
 
 
 func _hide_narrative_overlay() -> void:
-	_narrative_overlay.visible = false
+	if _narrative_transition != null and _narrative_transition.is_running():
+		_narrative_transition.kill()
+	_narrative_transition = null
 	_current_area = &"hub"
 	_management_ui.visible = false
 	_training_ui.visible = false
@@ -3089,6 +3398,30 @@ func _hide_narrative_overlay() -> void:
 	_update_training_navigation()
 	_update_status_navigation()
 	_update_relationships_navigation()
+	if _reduce_motion_enabled():
+		_narrative_overlay.visible = false
+		_narrative_overlay.modulate.a = 1.0
+		call_deferred("_process_narrative_flow")
+		return
+	_narrative_transition = create_tween()
+	_narrative_transition.tween_property(
+		_narrative_overlay,
+		"modulate:a",
+		0.0,
+		NARRATIVE_TRANSITION_DURATION
+	)
+	_narrative_transition.tween_callback(
+		_finish_narrative_transition.bind(false)
+	)
+
+
+func _finish_narrative_transition(open: bool) -> void:
+	if not open:
+		_narrative_overlay.visible = false
+	_narrative_overlay.modulate.a = 1.0
+	_narrative_transition = null
+	if not open:
+		call_deferred("_process_narrative_flow")
 
 
 func _update_narrative_panel_layout() -> void:
@@ -3421,6 +3754,7 @@ func _add_narrative_choice_button(label_text: String, choice_id: StringName) -> 
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	inset.add_child(label)
 	button.pressed.connect(_on_narrative_choice_pressed.bind(choice_id))
+	_wire_button_feedback(button)
 	_narrative_choices.add_child(button)
 
 
@@ -3611,6 +3945,13 @@ func _on_activity_selected(activity_id: StringName) -> void:
 	if _state == null or _state.actions_remaining <= 0:
 		return
 	_selected_activity = activity_id
+	if _training_cards.has(activity_id):
+		_pulse_ui_control(
+			_training_cards[activity_id],
+			_training_category_color(
+				_service.get_activity_category(activity_id)
+			)
+		)
 	_set_scene_for_activity(activity_id)
 	_update_activity_buttons()
 	_cancel_button.disabled = false

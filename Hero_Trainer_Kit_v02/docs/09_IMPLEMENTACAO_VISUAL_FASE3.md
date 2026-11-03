@@ -80,6 +80,8 @@ Com Godot 4.5.1 local, passaram:
 
 - Verificação headless do editor (`--headless --editor --quit`), código de saída 0.
 - Smoke test da cena principal (`--headless --quit-after 3`), código de saída 0.
+
+O polimento de navegação, feedback de controles e atualização animada dos indicadores está registrado em [11_POLIMENTO_TRANSICOES_FASE4A6.md](./11_POLIMENTO_TRANSICOES_FASE4A6.md).
 - Suítes `Training Service` e `Hori Narrative Campaign`: 8 métodos de teste, 385 asserções, 0 falhas.
 
 Os testes de dados inválidos emitem diagnósticos `push_error` esperados para chaves desconhecidas; as asserções confirmam que a rejeição é segura. O Godot AI MCP não iniciou: o processo do servidor falhou no handshake ao tentar buscar o pacote do servidor no PyPI, devido a erro de conexão. Portanto, nenhuma suíte nem captura foi executada pelo MCP; as capturas acima vieram do runtime local do Godot.
