@@ -51,6 +51,7 @@ var _background: TextureRect
 var _character_stage: Control
 var _management_ui: Control
 var _hub_ui: Control
+var _training_ui: Control
 var _hub_profile_panel: PanelContainer
 var _character_panel_scroll: ScrollContainer
 var _activity_scroll: ScrollContainer
@@ -115,6 +116,31 @@ var _hub_resource_bars: Dictionary[StringName, ProgressBar] = {}
 var _hub_resource_values: Dictionary[StringName, Label] = {}
 var _hub_bond_values: Dictionary[StringName, Label] = {}
 var _hub_nav_buttons: Dictionary[StringName, Button] = {}
+var _training_week_label: Label
+var _training_actions_label: Label
+var _training_credits_label: Label
+var _training_progress: ProgressBar
+var _training_resource_bars: Dictionary[StringName, ProgressBar] = {}
+var _training_resource_values: Dictionary[StringName, Label] = {}
+var _training_cards: Dictionary[StringName, Button] = {}
+var _training_card_effects: Dictionary[StringName, Label] = {}
+var _training_card_status: Dictionary[StringName, Label] = {}
+var _training_preview_title: Label
+var _training_preview_status: Label
+var _training_preview_detail: Label
+var _training_planning_panel: PanelContainer
+var _training_success_panel: PanelContainer
+var _training_success_title: Label
+var _training_success_body: Label
+var _training_failure_panel: PanelContainer
+var _training_failure_title: Label
+var _training_failure_body: Label
+var _training_result_label: Label
+var _training_hint_label: Label
+var _training_confirm_button: Button
+var _training_cancel_button: Button
+var _training_advance_button: Button
+var _training_nav_buttons: Dictionary[StringName, Button] = {}
 
 
 func _ready() -> void:
@@ -252,6 +278,7 @@ func _build_interface() -> void:
 	layout.add_child(_build_main_panels())
 	layout.add_child(_build_preview_dock())
 	_build_hub_screen()
+	_build_training_screen()
 	_build_narrative_overlay()
 	_management_ui.visible = false
 
@@ -707,6 +734,915 @@ func _build_preview_dock() -> PanelContainer:
 	return panel
 
 
+func _build_training_screen() -> void:
+	_training_ui = Control.new()
+	_training_ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_training_ui.mouse_filter = Control.MOUSE_FILTER_PASS
+	_training_ui.visible = false
+	_training_ui.resized.connect(_update_training_layout)
+	add_child(_training_ui)
+	_training_ui.add_child(_build_training_header())
+	_training_ui.add_child(_build_training_activity_panel())
+	_training_planning_panel = _build_training_planning_panel()
+	_training_ui.add_child(_training_planning_panel)
+	_training_ui.add_child(_build_training_navigation())
+	_update_training_layout()
+
+
+func _build_training_header() -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.anchor_left = 0.02
+	panel.anchor_top = 0.02
+	panel.anchor_right = 0.98
+	panel.anchor_bottom = 0.17
+	panel.add_theme_stylebox_override(
+		"panel",
+		TrainingThemeScript.make_panel_style(
+			Color(TrainingThemeScript.PANEL, 0.94),
+			Color(TrainingThemeScript.GOLD, 0.72),
+			12,
+			1
+		)
+	)
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 3)
+	panel.add_child(content)
+	var heading := HBoxContainer.new()
+	heading.add_theme_constant_override("separation", 10)
+	content.add_child(heading)
+	var identity := VBoxContainer.new()
+	identity.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	identity.add_theme_constant_override("separation", 0)
+	heading.add_child(identity)
+	var eyebrow := _make_label("HERO TRAINER  /  ACADEMIA NEXO", 9)
+	eyebrow.add_theme_color_override("font_color", TrainingThemeScript.GOLD)
+	identity.add_child(eyebrow)
+	var title := _make_label("TREINAMENTO", 16)
+	title.add_theme_color_override("font_color", TrainingThemeScript.CREAM)
+	identity.add_child(title)
+	_training_week_label = _make_label("", 10)
+	_training_week_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	heading.add_child(_training_week_label)
+	_training_actions_label = _make_label("", 10)
+	_training_actions_label.add_theme_color_override("font_color", TrainingThemeScript.MINT)
+	heading.add_child(_training_actions_label)
+	_training_credits_label = _make_label("", 10)
+	_training_credits_label.add_theme_color_override("font_color", TrainingThemeScript.GOLD)
+	heading.add_child(_training_credits_label)
+	_training_progress = ProgressBar.new()
+	_training_progress.min_value = 0
+	_training_progress.max_value = maxi(1, _service.get_total_weeks())
+	_training_progress.show_percentage = false
+	_training_progress.custom_minimum_size.y = 5
+	_training_progress.add_theme_stylebox_override(
+		"fill",
+		TrainingThemeScript.make_panel_style(
+			TrainingThemeScript.MINT,
+			TrainingThemeScript.MINT,
+			4,
+			0
+		)
+	)
+	content.add_child(_training_progress)
+	var condition_row := HBoxContainer.new()
+	condition_row.add_theme_constant_override("separation", 10)
+	content.add_child(condition_row)
+	condition_row.add_child(
+		_make_training_resource_meter(
+			&"energy",
+			"ENERGIA",
+			TrainingThemeScript.MINT
+		)
+	)
+	condition_row.add_child(
+		_make_training_resource_meter(
+			&"stress",
+			"ESTRESSE",
+			TrainingThemeScript.CORAL
+		)
+	)
+	condition_row.add_child(
+		_make_training_resource_meter(
+			&"motivation",
+			"MOTIVAÇÃO",
+			TrainingThemeScript.GOLD
+		)
+	)
+	return panel
+
+
+func _make_training_resource_meter(
+	resource_id: StringName,
+	title: String,
+	bar_color: Color
+) -> Control:
+	var meter := HBoxContainer.new()
+	meter.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	meter.add_theme_constant_override("separation", 5)
+	var name_label := _make_label(title, 8)
+	name_label.custom_minimum_size.x = 53
+	name_label.add_theme_color_override("font_color", bar_color)
+	meter.add_child(name_label)
+	var bar := _make_progress_bar(_service.get_resource_cap(), bar_color)
+	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.custom_minimum_size.y = 8
+	meter.add_child(bar)
+	var value_label := _make_label("", 8)
+	value_label.custom_minimum_size.x = 42
+	value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	meter.add_child(value_label)
+	_training_resource_bars[resource_id] = bar
+	_training_resource_values[resource_id] = value_label
+	return meter
+
+
+func _build_training_activity_panel() -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.anchor_left = 0.02
+	panel.anchor_top = 0.18
+	panel.anchor_right = 0.72
+	panel.anchor_bottom = 0.61
+	panel.add_theme_stylebox_override(
+		"panel",
+		TrainingThemeScript.make_panel_style(
+			Color(TrainingThemeScript.PANEL, 0.91),
+			Color(TrainingThemeScript.MINT, 0.5),
+			12,
+			1
+		)
+	)
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 4)
+	panel.add_child(content)
+	var heading := HBoxContainer.new()
+	content.add_child(heading)
+	var title := _make_section_title("ESCOLHA SEU PLANO")
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	heading.add_child(title)
+	var block_hint := _make_label("1 atividade = 1 bloco", 8)
+	block_hint.add_theme_color_override("font_color", TrainingThemeScript.GOLD)
+	heading.add_child(block_hint)
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.follow_focus = true
+	content.add_child(scroll)
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 5)
+	scroll.add_child(grid)
+	for activity_id: StringName in _service.get_activity_ids():
+		grid.add_child(_make_training_activity_card(activity_id))
+	return panel
+
+
+func _make_training_activity_card(activity_id: StringName) -> Button:
+	var category: String = _service.get_activity_category(activity_id)
+	var category_color: Color = _training_category_color(category)
+	var button := Button.new()
+	button.set_meta("activity_id", activity_id)
+	button.set_meta("category", category)
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.custom_minimum_size = Vector2(0, 56)
+	button.toggle_mode = true
+	button.focus_mode = Control.FOCUS_ALL
+	button.tooltip_text = (
+		"%s · %s · custo %d de energia"
+		% [
+			_service.get_activity_label(activity_id),
+			_category_label(category),
+			_service.get_activity_energy_cost(activity_id),
+		]
+	)
+	button.add_theme_stylebox_override(
+		"normal",
+		TrainingThemeScript.make_panel_style(
+			Color(TrainingThemeScript.PANEL, 0.97),
+			Color(category_color, 0.72),
+			9,
+			2
+		)
+	)
+	button.add_theme_stylebox_override(
+		"hover",
+		TrainingThemeScript.make_panel_style(
+			Color(category_color, 0.42),
+			category_color,
+			9,
+			2
+		)
+	)
+	button.add_theme_stylebox_override(
+		"pressed",
+		TrainingThemeScript.make_panel_style(
+			Color(category_color, 0.7),
+			TrainingThemeScript.CREAM,
+			9,
+			2
+		)
+	)
+	button.add_theme_stylebox_override(
+		"hover_pressed",
+		TrainingThemeScript.make_panel_style(
+			Color(category_color, 0.82),
+			TrainingThemeScript.CREAM,
+			9,
+			2
+		)
+	)
+	button.add_theme_stylebox_override(
+		"disabled",
+		TrainingThemeScript.make_panel_style(
+			Color(TrainingThemeScript.PANEL_MUTED, 0.9),
+			Color(category_color, 0.42),
+			9,
+			1
+		)
+	)
+	var inset := MarginContainer.new()
+	inset.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	inset.add_theme_constant_override("margin_left", 5)
+	inset.add_theme_constant_override("margin_top", 3)
+	inset.add_theme_constant_override("margin_right", 5)
+	inset.add_theme_constant_override("margin_bottom", 3)
+	inset.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	button.add_child(inset)
+	var labels := VBoxContainer.new()
+	labels.add_theme_constant_override("separation", 0)
+	labels.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	inset.add_child(labels)
+	var title_row := HBoxContainer.new()
+	title_row.add_theme_constant_override("separation", 4)
+	title_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	labels.add_child(title_row)
+	var name_label := _make_label(_service.get_activity_label(activity_id), 11)
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	title_row.add_child(name_label)
+	var category_label := _make_label(_category_label(category).to_upper(), 8)
+	category_label.add_theme_color_override("font_color", category_color)
+	category_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	title_row.add_child(category_label)
+	var effects_label := _make_label("", 9)
+	effects_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	effects_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	labels.add_child(effects_label)
+	var status_label := _make_label("", 8)
+	status_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	labels.add_child(status_label)
+	button.pressed.connect(_on_activity_selected.bind(activity_id))
+	_training_cards[activity_id] = button
+	_training_card_effects[activity_id] = effects_label
+	_training_card_status[activity_id] = status_label
+	return button
+
+
+func _training_category_color(category: String) -> Color:
+	match category:
+		"training":
+			return TrainingThemeScript.PETROL
+		"recovery":
+			return TrainingThemeScript.MINT
+		"work":
+			return TrainingThemeScript.GOLD
+		"relationship":
+			return TrainingThemeScript.CORAL
+		_:
+			return TrainingThemeScript.CREAM
+
+
+func _build_training_planning_panel() -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.anchor_left = 0.02
+	panel.anchor_top = 0.63
+	panel.anchor_right = 0.98
+	panel.anchor_bottom = 0.90
+	panel.add_theme_stylebox_override(
+		"panel",
+		TrainingThemeScript.make_panel_style(
+			Color(TrainingThemeScript.PANEL, 0.95),
+			Color(TrainingThemeScript.GOLD, 0.64),
+			12,
+			1
+		)
+	)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	panel.add_child(row)
+	var details := VBoxContainer.new()
+	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	details.add_theme_constant_override("separation", 2)
+	row.add_child(details)
+	var heading := HBoxContainer.new()
+	heading.add_theme_constant_override("separation", 8)
+	details.add_child(heading)
+	_training_preview_title = _make_label("PLANEJAMENTO", 11)
+	_training_preview_title.add_theme_color_override("font_color", TrainingThemeScript.GOLD)
+	_training_preview_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	heading.add_child(_training_preview_title)
+	_training_preview_status = _make_label("Selecione uma atividade.", 9)
+	_training_preview_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	heading.add_child(_training_preview_status)
+	_training_preview_detail = _make_label(
+		"A prévia usa apenas os dados atuais de treinamento.",
+		8
+	)
+	_training_preview_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	details.add_child(_training_preview_detail)
+	var scenarios := HBoxContainer.new()
+	scenarios.add_theme_constant_override("separation", 6)
+	details.add_child(scenarios)
+	_training_success_panel = _build_training_scenario_panel(
+		"SUCESSO",
+		TrainingThemeScript.MINT
+	)
+	scenarios.add_child(_training_success_panel)
+	_training_failure_panel = _build_training_scenario_panel(
+		"FALHA",
+		TrainingThemeScript.CORAL
+	)
+	scenarios.add_child(_training_failure_panel)
+	_training_result_label = _make_label("", 9)
+	_training_result_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_training_result_label.add_theme_color_override("font_color", TrainingThemeScript.CREAM)
+	_training_result_label.visible = false
+	details.add_child(_training_result_label)
+	_training_hint_label = _make_label(
+		"A prévia não consome bloco nem realiza sorteio.",
+		8
+	)
+	_training_hint_label.add_theme_color_override("font_color", TrainingThemeScript.MINT)
+	details.add_child(_training_hint_label)
+
+	var actions := VBoxContainer.new()
+	actions.custom_minimum_size.x = 126
+	actions.add_theme_constant_override("separation", 3)
+	row.add_child(actions)
+	_training_confirm_button = Button.new()
+	_training_confirm_button.text = "Confirmar"
+	_training_confirm_button.custom_minimum_size.y = 30
+	_training_confirm_button.disabled = true
+	_training_confirm_button.pressed.connect(_on_confirm_pressed)
+	actions.add_child(_training_confirm_button)
+	_training_cancel_button = Button.new()
+	_training_cancel_button.text = "Cancelar"
+	_training_cancel_button.custom_minimum_size.y = 27
+	_training_cancel_button.disabled = true
+	_training_cancel_button.pressed.connect(_on_cancel_pressed)
+	actions.add_child(_training_cancel_button)
+	_training_advance_button = Button.new()
+	_training_advance_button.text = "Avançar semana"
+	_training_advance_button.custom_minimum_size.y = 27
+	_training_advance_button.visible = false
+	_training_advance_button.disabled = true
+	_training_advance_button.pressed.connect(_on_advance_week_pressed)
+	actions.add_child(_training_advance_button)
+	return panel
+
+
+func _build_training_scenario_panel(
+	title_text: String,
+	accent: Color
+) -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.custom_minimum_size.y = 58
+	panel.add_theme_stylebox_override(
+		"panel",
+		TrainingThemeScript.make_panel_style(
+			Color(TrainingThemeScript.PANEL_MUTED, 0.94),
+			Color(accent, 0.64),
+			8,
+			1
+		)
+	)
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 1)
+	panel.add_child(content)
+	var title_label := _make_label(title_text, 9)
+	title_label.add_theme_color_override("font_color", accent)
+	content.add_child(title_label)
+	var body_label := _make_label("Os efeitos aparecerão ao selecionar.", 9)
+	body_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	content.add_child(body_label)
+	if title_text == "SUCESSO":
+		_training_success_title = title_label
+		_training_success_body = body_label
+	else:
+		_training_failure_title = title_label
+		_training_failure_body = body_label
+	return panel
+
+
+func _build_training_navigation() -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.anchor_left = 0.02
+	panel.anchor_top = 0.92
+	panel.anchor_right = 0.98
+	panel.anchor_bottom = 0.985
+	var style := TrainingThemeScript.make_panel_style(
+		Color(TrainingThemeScript.INK, 0.97),
+		Color(TrainingThemeScript.GOLD, 0.72),
+		12,
+		1
+	)
+	style.content_margin_top = 3
+	style.content_margin_bottom = 3
+	style.content_margin_left = 6
+	style.content_margin_right = 6
+	panel.add_theme_stylebox_override("panel", style)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 5)
+	panel.add_child(row)
+	for area: StringName in [&"hub", &"training", &"status", &"relationships"]:
+		var button := Button.new()
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		button.text = _hub_area_label(area)
+		button.focus_mode = Control.FOCUS_ALL
+		button.add_theme_font_size_override("font_size", 9)
+		button.pressed.connect(_on_hub_navigation_pressed.bind(area))
+		row.add_child(button)
+		_training_nav_buttons[area] = button
+	_update_training_navigation()
+	return panel
+
+
+func _update_training_layout() -> void:
+	if _training_ui == null:
+		return
+	var short_viewport: bool = _training_ui.size.y <= 640.0
+	var activity_bottom: float = 0.61 if short_viewport else 0.62
+	var preview_top: float = 0.63 if short_viewport else 0.64
+	var has_preview: bool = (
+		_selected_activity != &""
+		or (_training_result_label != null and _training_result_label.visible)
+	)
+	var preview_bottom: float
+	if short_viewport:
+		preview_bottom = 0.85 if has_preview else 0.82
+	else:
+		preview_bottom = 0.84 if has_preview else 0.81
+	for activity_id: StringName in _training_cards:
+		_training_cards[activity_id].custom_minimum_size.y = (
+			50.0 if short_viewport else 56.0
+		)
+	for child: Node in _training_ui.get_children():
+		if child is PanelContainer:
+			var panel := child as PanelContainer
+			if panel == _training_ui.get_child(1):
+				panel.anchor_bottom = activity_bottom
+			elif panel == _training_planning_panel:
+				panel.anchor_top = preview_top
+				panel.anchor_bottom = preview_bottom
+
+
+func _update_training_navigation() -> void:
+	for area: StringName in _training_nav_buttons:
+		var active: bool = area == _current_area
+		var button: Button = _training_nav_buttons[area]
+		button.add_theme_stylebox_override(
+			"normal",
+			TrainingThemeScript.make_panel_style(
+				Color(TrainingThemeScript.PETROL, 0.88)
+				if active
+				else Color(TrainingThemeScript.PANEL, 0.52),
+				TrainingThemeScript.GOLD
+				if active
+				else Color(TrainingThemeScript.MINT, 0.38),
+				9,
+				1
+			)
+		)
+		button.add_theme_stylebox_override(
+			"hover",
+			TrainingThemeScript.make_panel_style(
+				Color(TrainingThemeScript.PETROL, 0.95),
+				TrainingThemeScript.MINT,
+				9,
+				1
+			)
+		)
+
+
+func _update_training_state() -> void:
+	if _state == null or _training_ui == null:
+		return
+	_training_week_label.text = "SEMANA %02d / %02d" % [
+		_state.week,
+		_service.get_total_weeks(),
+	]
+	_training_actions_label.text = "BLOCOS %d / %d" % [
+		_state.actions_remaining,
+		_service.get_actions_per_week(),
+	]
+	_training_credits_label.text = "CR  %d" % _state.credits
+	_training_progress.max_value = maxi(1, _service.get_total_weeks())
+	_training_progress.value = _state.week
+	for resource_id: StringName in _training_resource_bars:
+		var value: int = _training_resource_value(_state, resource_id)
+		_training_resource_bars[resource_id].value = value
+		_training_resource_values[resource_id].text = "%d / %d" % [
+			value,
+			_service.get_resource_cap(),
+		]
+	_training_confirm_button.disabled = (
+		_selected_activity == &"" or _state.actions_remaining <= 0
+	)
+	_training_confirm_button.visible = _selected_activity != &""
+	_training_cancel_button.disabled = _selected_activity == &""
+	_training_cancel_button.visible = _selected_activity != &""
+	_training_advance_button.visible = _state.actions_remaining <= 0
+	_training_advance_button.disabled = (
+		_state.actions_remaining > 0
+		or _state.week >= _service.get_total_weeks()
+	)
+	if _state.week >= _service.get_total_weeks() and _state.actions_remaining == 0:
+		_training_advance_button.text = "Semestre encerrado"
+	else:
+		_training_advance_button.text = "Avançar semana"
+	_update_training_cards()
+	_update_training_navigation()
+
+
+func _update_training_cards() -> void:
+	if _state == null or _service == null:
+		return
+	for activity_id: StringName in _training_cards:
+		var button: Button = _training_cards[activity_id]
+		var category: String = _service.get_activity_category(activity_id)
+		var category_color: Color = _training_category_color(category)
+		var cost: int = _service.get_activity_energy_cost(activity_id)
+		var cost_label: String = "CUSTO %d EN" % cost
+		var preview_state: TrainingState = _state
+		var preview: TrainingPreview = _service.preview_activity(preview_state, activity_id)
+		var is_hypothetical: bool = false
+		if (
+			not preview.is_valid
+			and _state.actions_remaining > 0
+			and cost > _state.energy
+		):
+			preview_state = _state.duplicate_state()
+			preview_state.energy = cost
+			preview = _service.preview_activity(preview_state, activity_id)
+			is_hypothetical = preview.is_valid
+		var effects_label: Label = _training_card_effects[activity_id]
+		var status_label: Label = _training_card_status[activity_id]
+		button.button_pressed = activity_id == _selected_activity
+		button.disabled = _state.actions_remaining <= 0
+		if not preview.is_valid:
+			effects_label.text = "Efeitos indisponíveis nesta condição."
+		else:
+			var after: TrainingState = (
+				preview.success_result
+				if preview.can_fail
+				else preview.result
+			)
+			var changes: PackedStringArray = _format_compact_state_changes(
+				preview_state,
+				after,
+				true,
+				true
+			)
+			var effect_summary: String = (
+				"  ·  ".join(changes)
+				if not changes.is_empty()
+				else "Sem alteração direta de atributos ou recursos."
+			)
+			effects_label.text = (
+				"SE DISPONÍVEL · %s" % effect_summary
+				if is_hypothetical
+				else effect_summary
+			)
+
+		if _state.actions_remaining <= 0:
+			status_label.text = "%s · SEM BLOCOS" % cost_label
+			status_label.add_theme_color_override(
+				"font_color",
+				TrainingThemeScript.CORAL
+			)
+		elif cost > _state.energy:
+			status_label.text = "%s · BLOQUEADA · FALTAM %d EN" % [
+				cost_label,
+				cost - _state.energy,
+			]
+			status_label.add_theme_color_override(
+				"font_color",
+				TrainingThemeScript.CORAL
+			)
+		elif preview.can_fail:
+			status_label.text = (
+				"%s · %d%% SUCESSO / %d%% FALHA · DISPONÍVEL"
+				% [
+					cost_label,
+					preview.success_chance_percent,
+					preview.failure_chance_percent,
+				]
+			)
+			status_label.add_theme_color_override(
+				"font_color",
+				TrainingThemeScript.GOLD
+			)
+		else:
+			status_label.text = "%s · DETERMINÍSTICA · DISPONÍVEL" % cost_label
+			status_label.add_theme_color_override(
+				"font_color",
+				category_color
+			)
+
+
+func _training_resource_value(state: TrainingState, resource_id: StringName) -> int:
+	match resource_id:
+		&"energy":
+			return state.energy
+		&"stress":
+			return state.stress
+		&"motivation":
+			return state.motivation
+		_:
+			return 0
+
+
+func _format_compact_state_changes(
+	before: TrainingState,
+	after: TrainingState,
+	include_stats: bool,
+	include_resources: bool
+) -> PackedStringArray:
+	var changes := PackedStringArray()
+	if before == null or after == null:
+		return changes
+	if include_stats:
+		for stat_id: StringName in TrainingState.ATTRIBUTE_IDS:
+			var delta: int = int(after.stats[stat_id]) - int(before.stats[stat_id])
+			if delta != 0:
+				changes.append(
+					"%s %s%d"
+					% [
+						STAT_SHORT_LABELS[stat_id],
+						"+" if delta > 0 else "",
+						delta,
+					]
+				)
+	if include_resources:
+		for resource_id: StringName in [
+			&"energy",
+			&"stress",
+			&"motivation",
+			&"credits",
+			&"reputation",
+		]:
+			var delta: int = _training_resource_value_full(after, resource_id) \
+				- _training_resource_value_full(before, resource_id)
+			if delta != 0:
+				changes.append(
+					"%s %s%d"
+					% [
+						_training_resource_short_label(resource_id),
+						"+" if delta > 0 else "",
+						delta,
+					]
+				)
+		for bond_id: StringName in before.bonds:
+			var delta: int = int(after.bonds.get(bond_id, 0)) - int(before.bonds[bond_id])
+			if delta != 0:
+				changes.append(
+					"%s %s%d"
+					% [
+						_display_bond_name(bond_id),
+						"+" if delta > 0 else "",
+						delta,
+					]
+				)
+	return changes
+
+
+func _training_resource_value_full(state: TrainingState, resource_id: StringName) -> int:
+	match resource_id:
+		&"energy":
+			return state.energy
+		&"stress":
+			return state.stress
+		&"motivation":
+			return state.motivation
+		&"credits":
+			return state.credits
+		&"reputation":
+			return state.reputation
+		_:
+			return 0
+
+
+func _training_resource_short_label(resource_id: StringName) -> String:
+	match resource_id:
+		&"energy":
+			return "EN"
+		&"stress":
+			return "EST"
+		&"motivation":
+			return "MOT"
+		&"credits":
+			return "CR"
+		&"reputation":
+			return "REP"
+		_:
+			return String(resource_id).to_upper()
+
+
+func _update_training_preview(
+	activity_id: StringName,
+	preview: TrainingPreview
+) -> void:
+	_training_preview_title.text = _service.get_activity_label(activity_id)
+	_training_result_label.visible = false
+	_training_success_panel.visible = false
+	_training_failure_panel.visible = false
+	_training_cancel_button.disabled = false
+	if not preview.is_valid:
+		_training_preview_status.text = "INDISPONÍVEL"
+		_training_preview_status.add_theme_color_override(
+			"font_color",
+			TrainingThemeScript.CORAL
+		)
+		_training_preview_detail.text = (
+			"%s · custo %d EN. Nenhum bloco foi consumido."
+			% [
+				preview.message,
+				_service.get_activity_energy_cost(activity_id),
+			]
+		)
+		_training_hint_label.text = "Escolha outra atividade ou cancele a seleção."
+		_training_hint_label.add_theme_color_override(
+			"font_color",
+			TrainingThemeScript.CORAL
+		)
+		_training_confirm_button.disabled = true
+		_update_training_layout()
+		return
+
+	_training_preview_detail.text = "%s · custo %d EN." % [
+		_category_label(_service.get_activity_category(activity_id)),
+		_service.get_activity_energy_cost(activity_id),
+	]
+	var success_changes: PackedStringArray = _format_compact_state_changes(
+		_state,
+		preview.success_result if preview.can_fail else preview.result,
+		true,
+		true
+	)
+	_training_success_panel.visible = true
+	_training_success_title.text = (
+		"SUCESSO · %d%%" % preview.success_chance_percent
+		if preview.can_fail
+		else "EFEITOS · DETERMINÍSTICOS"
+	)
+	_training_success_body.text = (
+		"  ·  ".join(success_changes)
+		if not success_changes.is_empty()
+		else "Sem alteração direta de atributos ou recursos."
+	)
+	if preview.can_fail:
+		_training_preview_status.text = (
+			"RISCO · %d%% falha · 1 bloco ao confirmar"
+			% preview.failure_chance_percent
+		)
+		_training_preview_status.add_theme_color_override(
+			"font_color",
+			TrainingThemeScript.GOLD
+		)
+		_training_failure_panel.visible = true
+		_training_failure_title.text = "FALHA · %d%%" % preview.failure_chance_percent
+		var failure_changes: PackedStringArray = _format_compact_state_changes(
+			_state,
+			preview.failure_result,
+			true,
+			true
+		)
+		_training_failure_body.text = (
+			"Sem ganhos de atributos; custos garantidos: %s"
+			% (
+				"  ·  ".join(failure_changes)
+				if not failure_changes.is_empty()
+				else "nenhum recurso alterado"
+			)
+		)
+		_training_hint_label.text = (
+			"A prévia não consome bloco nem realiza sorteio; confirme para aplicar."
+		)
+		_training_hint_label.add_theme_color_override(
+			"font_color",
+			TrainingThemeScript.MINT
+		)
+	else:
+		_training_preview_status.text = "DISPONÍVEL · 1 bloco ao confirmar"
+		_training_preview_status.add_theme_color_override(
+			"font_color",
+			TrainingThemeScript.MINT
+		)
+		_training_hint_label.text = (
+			"A prévia não consome bloco; confirmar aplica os efeitos."
+		)
+		_training_hint_label.add_theme_color_override(
+			"font_color",
+			TrainingThemeScript.MINT
+		)
+	_training_confirm_button.disabled = _state.actions_remaining <= 0
+	_update_training_layout()
+
+
+func _show_training_result(
+	activity_id: StringName,
+	state_before: TrainingState,
+	applied: TrainingPreview
+) -> void:
+	_training_preview_title.text = _service.get_activity_label(activity_id)
+	_training_success_panel.visible = false
+	_training_failure_panel.visible = false
+	_training_result_label.visible = true
+	var result_color: Color = TrainingThemeScript.MINT
+	var result_title: String = "RESULTADO · ATIVIDADE CONCLUÍDA"
+	if applied.outcome == TrainingPreview.OUTCOME_FAILURE:
+		result_color = TrainingThemeScript.CORAL
+		result_title = "RESULTADO · FALHA"
+	elif applied.outcome == TrainingPreview.OUTCOME_SUCCESS:
+		result_title = "RESULTADO · SUCESSO"
+	elif applied.outcome == TrainingPreview.OUTCOME_DETERMINISTIC:
+		result_title = "RESULTADO · DETERMINÍSTICO"
+	_training_preview_status.text = result_title
+	_training_preview_status.add_theme_color_override("font_color", result_color)
+	var changes: PackedStringArray = _format_compact_state_changes(
+		state_before,
+		applied.result,
+		true,
+		true
+	)
+	var changes_text: String = (
+		"  ·  ".join(changes)
+		if not changes.is_empty()
+		else "Nenhum atributo ou recurso mudou."
+	)
+	_training_result_label.text = (
+		"%s\nBlocos restantes: %d / %d"
+		% [
+			changes_text,
+			applied.result.actions_remaining,
+			_service.get_actions_per_week(),
+		]
+	)
+	_training_hint_label.text = applied.message
+	_training_hint_label.add_theme_color_override("font_color", result_color)
+	_training_preview_detail.text = (
+		"Alterações aplicadas · custo de energia e demais efeitos já refletidos."
+	)
+	_update_training_layout()
+
+
+func _reset_training_selection(
+	title_text: String,
+	status_text: String,
+	detail_text: String
+) -> void:
+	_selected_activity = &""
+	if _confirm_button != null:
+		_confirm_button.disabled = true
+		_cancel_button.disabled = true
+		_preview_title.text = title_text
+		_preview_status.text = status_text
+		_preview_body.text = detail_text
+		_feedback_label.text = ""
+	if _training_confirm_button == null:
+		return
+	_training_preview_title.text = title_text
+	_training_preview_status.text = status_text
+	_training_preview_status.add_theme_color_override(
+		"font_color",
+		TrainingThemeScript.CREAM
+	)
+	_training_preview_detail.text = detail_text
+	_training_success_panel.visible = false
+	_training_failure_panel.visible = false
+	_training_result_label.visible = false
+	_training_hint_label.text = detail_text
+	if title_text == "PLANEJAMENTO":
+		_training_hint_label.text = "A prévia não consome bloco nem realiza sorteio."
+	_training_hint_label.add_theme_color_override(
+		"font_color",
+		TrainingThemeScript.MINT
+	)
+	_training_confirm_button.disabled = true
+	_training_confirm_button.visible = false
+	_training_cancel_button.disabled = true
+	_training_cancel_button.visible = false
+	_update_training_layout()
+	if _state != null:
+		_update_activity_buttons()
+
+
 func _build_hub_screen() -> void:
 	_hub_ui = Control.new()
 	_hub_ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -1010,9 +1946,24 @@ func _on_hub_navigation_pressed(area: StringName) -> void:
 func _show_management_area(area: StringName) -> void:
 	if _narrative_overlay != null and _narrative_overlay.visible:
 		return
+	var previous_area: StringName = _current_area
+	if previous_area == &"training" and area != &"training":
+		_reset_training_selection(
+			"PLANEJAMENTO",
+			"Selecione uma atividade.",
+			"Escolha uma atividade para comparar efeitos e disponibilidade."
+		)
+	elif area == &"training" and previous_area != &"training":
+		_reset_training_selection(
+			"PLANEJAMENTO",
+			"Selecione uma atividade.",
+			"Escolha uma atividade para comparar efeitos e disponibilidade."
+		)
 	_current_area = area
 	_hub_ui.visible = false
-	_management_ui.visible = true
+	_training_ui.visible = area == &"training"
+	_management_ui.visible = area != &"training"
+	_update_training_navigation()
 	_set_hori_presentation(HoriPresentation.RIGHT_SIDE)
 	call_deferred("_focus_management_area", area)
 
@@ -1034,12 +1985,20 @@ func _focus_management_area(area: StringName) -> void:
 func _show_hub() -> void:
 	if _narrative_overlay != null and _narrative_overlay.visible:
 		return
+	if _current_area == &"training":
+		_reset_training_selection(
+			"PLANEJAMENTO",
+			"Selecione uma atividade.",
+			"A prévia foi encerrada sem alterar a campanha."
+		)
 	_current_area = &"hub"
 	_hub_ui.visible = true
 	_management_ui.visible = false
+	_training_ui.visible = false
 	_set_scene_context(&"academy")
 	_set_hori_presentation(HoriPresentation.RIGHT_SIDE)
 	_update_hub_state()
+	_update_training_navigation()
 
 
 func _update_hub_state() -> void:
@@ -1306,6 +2265,7 @@ func _show_narrative_overlay() -> void:
 	_update_narrative_panel_layout()
 	_management_ui.visible = false
 	_hub_ui.visible = false
+	_training_ui.visible = false
 	_narrative_overlay.visible = true
 
 
@@ -1313,9 +2273,11 @@ func _hide_narrative_overlay() -> void:
 	_narrative_overlay.visible = false
 	_current_area = &"hub"
 	_management_ui.visible = false
+	_training_ui.visible = false
 	_hub_ui.visible = true
 	_set_hori_presentation(HoriPresentation.RIGHT_SIDE)
 	_update_hub_state()
+	_update_training_navigation()
 
 
 func _update_narrative_panel_layout() -> void:
@@ -1841,6 +2803,7 @@ func _on_activity_selected(activity_id: StringName) -> void:
 	_set_scene_for_activity(activity_id)
 	_update_activity_buttons()
 	_cancel_button.disabled = false
+	_training_cancel_button.disabled = false
 	var preview: TrainingPreview = _service.preview_activity(_state, activity_id)
 	_preview_title.text = _service.get_activity_label(activity_id)
 	if not preview.is_valid:
@@ -1859,6 +2822,7 @@ func _on_activity_selected(activity_id: StringName) -> void:
 		)
 		_confirm_button.disabled = true
 		_feedback_label.text = "Escolha outra atividade ou cancele a prévia."
+		_update_training_preview(activity_id, preview)
 		return
 
 	if preview.can_fail:
@@ -1881,6 +2845,7 @@ func _on_activity_selected(activity_id: StringName) -> void:
 		)
 	_preview_body.text = _format_preview(activity_id, preview)
 	_confirm_button.disabled = false
+	_update_training_preview(activity_id, preview)
 	if preview.can_fail:
 		_feedback_label.text = (
 			"A prévia não sorteia nem consome ação. O resultado só será definido ao confirmar."
@@ -1903,11 +2868,24 @@ func _on_confirm_pressed() -> void:
 		)
 		_preview_body.text = applied.message
 		_confirm_button.disabled = true
+		_training_confirm_button.disabled = true
+		_training_preview_status.text = "INDISPONÍVEL"
+		_training_preview_status.add_theme_color_override(
+			"font_color",
+			TrainingThemeScript.CORAL
+		)
+		_training_preview_detail.text = applied.message
+		_training_hint_label.text = "Nenhum recurso ou bloco foi consumido."
+		_training_hint_label.add_theme_color_override(
+			"font_color",
+			TrainingThemeScript.CORAL
+		)
 		_feedback_label.text = "Nenhum recurso ou bloco foi consumido."
 		return
 
 	_selected_activity = &""
 	_refresh_state()
+	_show_training_result(activity_id, state_before, applied)
 	if applied.can_fail:
 		_preview_title.text = _service.get_activity_label(activity_id)
 		if applied.outcome == TrainingPreview.OUTCOME_FAILURE:
@@ -1951,6 +2929,11 @@ func _on_cancel_pressed() -> void:
 	_feedback_label.text = ""
 	_confirm_button.disabled = true
 	_cancel_button.disabled = true
+	_reset_training_selection(
+		"PLANEJAMENTO",
+		"Selecione uma atividade.",
+		"A prévia foi cancelada; nenhum recurso ou bloco foi alterado."
+	)
 	_update_activity_buttons()
 
 
@@ -1965,6 +2948,11 @@ func _on_advance_week_pressed() -> void:
 	_feedback_label.text = ""
 	_confirm_button.disabled = true
 	_cancel_button.disabled = true
+	_reset_training_selection(
+		"NOVA SEMANA",
+		"Semana %d iniciada." % _state.week,
+		"Escolha uma atividade para planejar o próximo bloco."
+	)
 	_refresh_state()
 	_process_narrative_flow()
 
@@ -2059,6 +3047,7 @@ func _update_activity_buttons() -> void:
 			"font_color",
 			status_color
 		)
+	_update_training_state()
 
 
 func _format_preview(activity_id: StringName, preview: TrainingPreview) -> String:
