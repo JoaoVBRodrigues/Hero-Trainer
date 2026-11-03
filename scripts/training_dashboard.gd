@@ -53,6 +53,7 @@ var _management_ui: Control
 var _hub_ui: Control
 var _training_ui: Control
 var _status_ui: Control
+var _relationships_ui: Control
 var _hub_profile_panel: PanelContainer
 var _status_profile_label: Label
 var _status_name_label: Label
@@ -69,6 +70,15 @@ var _status_credits_value: Label
 var _status_reputation_value: Label
 var _status_nav_buttons: Dictionary[StringName, Button] = {}
 var _status_back_button: Button
+var _relationship_week_label: Label
+var _relationship_actions_label: Label
+var _relationship_progress: ProgressBar
+var _relationships_scroll: ScrollContainer
+var _relationship_cards: Dictionary[StringName, Dictionary] = {}
+var _relationship_name_labels: Dictionary[StringName, Label] = {}
+var _relationship_activity_buttons: Dictionary[StringName, Button] = {}
+var _relationship_nav_buttons: Dictionary[StringName, Button] = {}
+var _relationship_back_button: Button
 var _character_panel_scroll: ScrollContainer
 var _activity_scroll: ScrollContainer
 var _status_section: Control
@@ -297,6 +307,7 @@ func _build_interface() -> void:
 	_build_hub_screen()
 	_build_training_screen()
 	_build_status_screen()
+	_build_relationships_screen()
 	_build_narrative_overlay()
 	_management_ui.visible = false
 
@@ -1625,6 +1636,346 @@ func _update_status_state() -> void:
 	_update_status_navigation()
 
 
+func _build_relationships_screen() -> void:
+	_relationships_ui = Control.new()
+	_relationships_ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_relationships_ui.mouse_filter = Control.MOUSE_FILTER_PASS
+	add_child(_relationships_ui)
+
+	var header := PanelContainer.new()
+	header.anchor_left = 0.315
+	header.anchor_top = 0.018
+	header.anchor_right = 0.982
+	header.anchor_bottom = 0.145
+	header.add_theme_stylebox_override(
+		"panel",
+		TrainingThemeScript.make_panel_style(
+			Color(TrainingThemeScript.PANEL, 0.93),
+			Color(TrainingThemeScript.GOLD, 0.62),
+			14,
+			1
+		)
+	)
+	var header_row := HBoxContainer.new()
+	header_row.add_theme_constant_override("separation", 12)
+	header.add_child(header_row)
+	var identity := VBoxContainer.new()
+	identity.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	identity.add_theme_constant_override("separation", 0)
+	header_row.add_child(identity)
+	var eyebrow := _make_label("HERO TRAINER  /  ACADEMIA", 9)
+	eyebrow.add_theme_color_override("font_color", TrainingThemeScript.GOLD)
+	identity.add_child(eyebrow)
+	var title := _make_label("RELAÇÕES DA ACADEMIA", 17)
+	title.add_theme_color_override("font_color", TrainingThemeScript.CREAM)
+	identity.add_child(title)
+	var progress_column := VBoxContainer.new()
+	progress_column.custom_minimum_size.x = 160
+	progress_column.add_theme_constant_override("separation", 2)
+	header_row.add_child(progress_column)
+	var progress_labels := HBoxContainer.new()
+	progress_labels.add_theme_constant_override("separation", 5)
+	progress_column.add_child(progress_labels)
+	_relationship_week_label = _make_label("", 10)
+	_relationship_week_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	progress_labels.add_child(_relationship_week_label)
+	_relationship_actions_label = _make_label("", 9)
+	_relationship_actions_label.add_theme_color_override(
+		"font_color",
+		TrainingThemeScript.MINT
+	)
+	progress_labels.add_child(_relationship_actions_label)
+	_relationship_progress = _make_progress_bar(
+		_service.get_total_weeks(),
+		TrainingThemeScript.MINT
+	)
+	_relationship_progress.custom_minimum_size.y = 8
+	progress_column.add_child(_relationship_progress)
+	_relationship_back_button = Button.new()
+	_relationship_back_button.text = "← HUB"
+	_relationship_back_button.custom_minimum_size = Vector2(70, 36)
+	_relationship_back_button.pressed.connect(_show_hub)
+	header_row.add_child(_relationship_back_button)
+	_relationships_ui.add_child(header)
+
+	var scroll := ScrollContainer.new()
+	_relationships_scroll = scroll
+	scroll.anchor_left = 0.315
+	scroll.anchor_top = 0.165
+	scroll.anchor_right = 0.982
+	scroll.anchor_bottom = 0.885
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.follow_focus = true
+	_relationships_ui.add_child(scroll)
+	var content := VBoxContainer.new()
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content.add_theme_constant_override("separation", 8)
+	scroll.add_child(content)
+	content.add_child(_make_section_title("PESSOAS DA ACADEMIA"))
+	var comparison_hint := _make_label(
+		"Cada barra mostra o vínculo atual em relação ao limite definido.",
+		9
+	)
+	comparison_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	comparison_hint.add_theme_color_override(
+		"font_color",
+		Color(TrainingThemeScript.CREAM, 0.82)
+	)
+	content.add_child(comparison_hint)
+
+	var bond_order: Array[StringName] = [
+		&"ray",
+		&"luppi",
+		&"instructor",
+	]
+	var bond_ids: Array[StringName] = _service.get_bond_ids()
+	for bond_id: StringName in bond_order:
+		if not bond_ids.has(bond_id):
+			continue
+		content.add_child(_build_relationship_card(bond_id))
+
+	var history_note := _make_label(
+		"Histórico de evolução dos vínculos indisponível.",
+		9
+	)
+	history_note.add_theme_color_override(
+		"font_color",
+		Color(TrainingThemeScript.CREAM, 0.68)
+	)
+	content.add_child(history_note)
+	content.add_child(_make_section_title("ATIVIDADES RELACIONADAS"))
+	var activity_hint := _make_label(
+		"Atalhos para atividades existentes; a aplicação continua no Treinamento.",
+		9
+	)
+	activity_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	activity_hint.add_theme_color_override(
+		"font_color",
+		Color(TrainingThemeScript.CREAM, 0.82)
+	)
+	content.add_child(activity_hint)
+	var activity_row := HBoxContainer.new()
+	activity_row.add_theme_constant_override("separation", 7)
+	content.add_child(activity_row)
+	_add_relationship_activity_button(activity_row, &"bond_ray")
+	_add_relationship_activity_button(activity_row, &"bond_luppi")
+
+	_relationships_ui.add_child(_build_relationships_navigation())
+	_relationships_ui.visible = false
+	_update_relationships_state()
+
+
+func _build_relationship_card(bond_id: StringName) -> PanelContainer:
+	var palette: Dictionary[StringName, Color] = {
+		&"ray": TrainingThemeScript.CORAL,
+		&"luppi": TrainingThemeScript.MINT,
+		&"instructor": TrainingThemeScript.GOLD,
+	}
+	var bond_names: Dictionary[StringName, String] = {
+		&"ray": "Ray",
+		&"luppi": "Luppi",
+		&"instructor": "Instrutor",
+	}
+	var accents: Dictionary[StringName, String] = {
+		&"ray": "R",
+		&"luppi": "L",
+		&"instructor": "I",
+	}
+	var accent: Color = palette.get(bond_id, TrainingThemeScript.MINT)
+	var card := PanelContainer.new()
+	card.custom_minimum_size.y = 86
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.add_theme_stylebox_override(
+		"panel",
+		TrainingThemeScript.make_panel_style(
+			Color(TrainingThemeScript.PANEL, 0.94),
+			Color(accent, 0.68),
+			12,
+			1
+		)
+	)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	card.add_child(row)
+	var monogram := PanelContainer.new()
+	monogram.custom_minimum_size = Vector2(48, 48)
+	monogram.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	monogram.add_theme_stylebox_override(
+		"panel",
+		TrainingThemeScript.make_panel_style(
+			Color(accent, 0.24),
+			accent,
+			24,
+			1
+		)
+	)
+	var monogram_label := _make_label(accents.get(bond_id, "?"), 19)
+	monogram_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	monogram_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	monogram.add_child(monogram_label)
+	row.add_child(monogram)
+
+	var details := VBoxContainer.new()
+	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	details.add_theme_constant_override("separation", 3)
+	row.add_child(details)
+	var heading := HBoxContainer.new()
+	heading.add_theme_constant_override("separation", 8)
+	details.add_child(heading)
+	var name_label := _make_label(bond_names.get(bond_id, String(bond_id)), 15)
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	heading.add_child(name_label)
+	_relationship_name_labels[bond_id] = name_label
+	var value_label := _make_label("", 16)
+	value_label.add_theme_color_override("font_color", accent)
+	heading.add_child(value_label)
+	var profile_label := _make_label(_relationship_profile_text(bond_id), 9)
+	profile_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	profile_label.add_theme_color_override(
+		"font_color",
+		Color(TrainingThemeScript.CREAM, 0.82)
+	)
+	details.add_child(profile_label)
+	var progress_row := HBoxContainer.new()
+	progress_row.add_theme_constant_override("separation", 7)
+	details.add_child(progress_row)
+	var bar := _make_progress_bar(_service.get_bond_cap(), accent)
+	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.custom_minimum_size.y = 8
+	progress_row.add_child(bar)
+	var remaining_label := _make_label("", 9)
+	remaining_label.custom_minimum_size.x = 78
+	remaining_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	progress_row.add_child(remaining_label)
+	_relationship_cards[bond_id] = {
+		"panel": card,
+		"value": value_label,
+		"bar": bar,
+		"remaining": remaining_label,
+	}
+	return card
+
+
+func _relationship_profile_text(bond_id: StringName) -> String:
+	match bond_id:
+		&"ray":
+			return (
+				"Mulher alta e forte; chifres por mutação. "
+				+ "Busca renda para sustentar as amigas e garantir cuidados médicos."
+			)
+		&"luppi":
+			return "Garota-rato, resultado de experimento; gosta de lutar."
+		&"instructor":
+			return "Perfil narrativo não especificado nos dados disponíveis."
+		_:
+			return "Perfil não especificado."
+
+
+func _add_relationship_activity_button(
+	parent: HBoxContainer,
+	activity_id: StringName
+) -> void:
+	var button := Button.new()
+	button.set_meta("activity_id", activity_id)
+	button.text = "%s  →" % _service.get_activity_label(activity_id)
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.custom_minimum_size.y = 42
+	button.focus_mode = Control.FOCUS_ALL
+	button.pressed.connect(_show_management_area.bind(&"training"))
+	parent.add_child(button)
+	_relationship_activity_buttons[activity_id] = button
+
+
+func _build_relationships_navigation() -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.anchor_left = 0.315
+	panel.anchor_top = 0.91
+	panel.anchor_right = 0.982
+	panel.anchor_bottom = 0.985
+	var style := TrainingThemeScript.make_panel_style(
+		Color(TrainingThemeScript.INK, 0.97),
+		Color(TrainingThemeScript.GOLD, 0.72),
+		12,
+		1
+	)
+	style.content_margin_top = 3
+	style.content_margin_bottom = 3
+	style.content_margin_left = 6
+	style.content_margin_right = 6
+	panel.add_theme_stylebox_override("panel", style)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 5)
+	panel.add_child(row)
+	for area: StringName in [&"hub", &"training", &"status", &"relationships"]:
+		var button := Button.new()
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		button.text = _hub_area_label(area)
+		button.focus_mode = Control.FOCUS_ALL
+		button.add_theme_font_size_override("font_size", 9)
+		button.pressed.connect(_on_hub_navigation_pressed.bind(area))
+		row.add_child(button)
+		_relationship_nav_buttons[area] = button
+	_update_relationships_navigation()
+	return panel
+
+
+func _update_relationships_navigation() -> void:
+	for area: StringName in _relationship_nav_buttons:
+		var active: bool = area == _current_area
+		var button: Button = _relationship_nav_buttons[area]
+		button.add_theme_stylebox_override(
+			"normal",
+			TrainingThemeScript.make_panel_style(
+				Color(TrainingThemeScript.PETROL, 0.88)
+				if active
+				else Color(TrainingThemeScript.PANEL, 0.52),
+				TrainingThemeScript.GOLD
+				if active
+				else Color(TrainingThemeScript.MINT, 0.38),
+				9,
+				1
+			)
+		)
+		button.add_theme_stylebox_override(
+			"hover",
+			TrainingThemeScript.make_panel_style(
+				Color(TrainingThemeScript.PETROL, 0.95),
+				TrainingThemeScript.MINT,
+				9,
+				1
+			)
+		)
+
+
+func _update_relationships_state() -> void:
+	if _state == null or _relationships_ui == null:
+		return
+	_relationship_week_label.text = "SEMANA %02d / %02d" % [
+		_state.week,
+		_service.get_total_weeks(),
+	]
+	_relationship_actions_label.text = "%d / %d AÇÕES" % [
+		_state.actions_remaining,
+		_service.get_actions_per_week(),
+	]
+	_relationship_progress.max_value = maxi(1, _service.get_total_weeks())
+	_relationship_progress.value = _state.week
+	var bond_cap: int = _service.get_bond_cap()
+	for bond_id: StringName in _relationship_cards:
+		var bond_value: int = int(_state.bonds.get(bond_id, 0))
+		var card: Dictionary = _relationship_cards[bond_id]
+		var value_label: Label = card["value"]
+		var bar: ProgressBar = card["bar"]
+		var remaining_label: Label = card["remaining"]
+		value_label.text = "%d / %d" % [bond_value, bond_cap]
+		bar.max_value = maxi(1, bond_cap)
+		bar.value = bond_value
+		remaining_label.text = "%d até o limite" % maxi(0, bond_cap - bond_value)
+	_update_relationships_navigation()
+
+
 func _update_training_navigation() -> void:
 	for area: StringName in _training_nav_buttons:
 		var active: bool = area == _current_area
@@ -2385,22 +2736,32 @@ func _show_management_area(area: StringName) -> void:
 	_current_area = area
 	_hub_ui.visible = false
 	_training_ui.visible = area == &"training"
+	_relationships_ui.visible = area == &"relationships"
 	_status_ui.visible = area == &"status"
-	_management_ui.visible = area != &"training" and area != &"status"
+	_management_ui.visible = (
+		area != &"training"
+		and area != &"status"
+		and area != &"relationships"
+	)
 	if area == &"status":
 		_update_status_state()
+	elif area == &"relationships":
+		_update_relationships_state()
+	if area in [&"status", &"relationships"]:
+		_set_scene_context(&"academy")
 	_update_training_navigation()
 	_update_status_navigation()
+	_update_relationships_navigation()
 	_set_hori_presentation(
 		HoriPresentation.STATUS_SIDE
-		if area == &"status"
+		if area in [&"status", &"relationships"]
 		else HoriPresentation.RIGHT_SIDE
 	)
 	call_deferred("_focus_management_area", area)
 
 
 func _focus_management_area(area: StringName) -> void:
-	if area == &"status":
+	if area in [&"status", &"relationships"]:
 		return
 	if _character_panel_scroll == null:
 		return
@@ -2429,6 +2790,7 @@ func _show_hub() -> void:
 	_management_ui.visible = false
 	_training_ui.visible = false
 	_status_ui.visible = false
+	_relationships_ui.visible = false
 	_set_scene_context(&"academy")
 	_set_hori_presentation(HoriPresentation.RIGHT_SIDE)
 	_update_hub_state()
@@ -2710,6 +3072,7 @@ func _show_narrative_overlay() -> void:
 	_hub_ui.visible = false
 	_training_ui.visible = false
 	_status_ui.visible = false
+	_relationships_ui.visible = false
 	_narrative_overlay.visible = true
 
 
@@ -2719,11 +3082,13 @@ func _hide_narrative_overlay() -> void:
 	_management_ui.visible = false
 	_training_ui.visible = false
 	_status_ui.visible = false
+	_relationships_ui.visible = false
 	_hub_ui.visible = true
 	_set_hori_presentation(HoriPresentation.RIGHT_SIDE)
 	_update_hub_state()
 	_update_training_navigation()
 	_update_status_navigation()
+	_update_relationships_navigation()
 
 
 func _update_narrative_panel_layout() -> void:
@@ -3446,6 +3811,7 @@ func _refresh_state() -> void:
 		_advance_button.text = "Avançar semana"
 	_update_hub_state()
 	_update_status_state()
+	_update_relationships_state()
 
 
 func _set_resource_display(resource_id: StringName, value: int) -> void:

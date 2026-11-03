@@ -10,6 +10,12 @@ A tela de Status é uma área independente do dashboard, com os cinco atributos,
 
 A campanha abre primeiro no Hub da Academia. Um evento narrativo elegível não cobre o HUD durante a inicialização; o fluxo narrativo continua sendo avaliado após uma atividade confirmada e ao avançar a semana, preservando a prioridade dos eventos nesses momentos. A navegação pelo Status não consome ações, altera estado ou avança o RNG.
 
+## Fase 4A.5 — Relações e vínculos
+
+A tela de Relações é independente do painel administrativo antigo e apresenta os vínculos existentes com Ray, Luppi e Instrutor. Os valores e o limite vêm de `TrainingState` e `TrainingService`; os cartões usam cores próprias da paleta e mostram progresso atual e distância restante. Os resumos de Ray e Luppi se limitam a fatos já confirmados na Bíblia Canônica. Como não há perfil narrativo do Instrutor nem histórico de evolução dos vínculos, a interface declara essas ausências em vez de preencher lacunas.
+
+Os atalhos “Conversa com Ray” e “Tempo com Luppi” apenas abrem Treinamento. A aplicação continua sob responsabilidade de `TrainingService`; consultar Relações não altera o estado nem avança o RNG. Os controles existentes de navegação, o Hub inicial e a prioridade narrativa foram preservados.
+
 ## Interface
 
 O dashboard preserva cabeçalho, progresso do semestre, painel da personagem, atividades e prévia. Um fundo contextual fica atrás dos painéis, com tint índigo para manter contraste. O painel da personagem e o modal aceitam retrato com proporção preservada; a falta de retrato de outro personagem continua visível como placeholder, sem gerar ou reutilizar a arte da Hori.
@@ -63,6 +69,8 @@ As capturas foram renderizadas pela cena Godot em runtime com Godot 4.5.1 e rend
 | Etapa 2 da missão e requisito do Pulso | [Missão](../../captures/phase3/mission-runtime.png) |
 
 Nas resoluções avaliadas, o cabeçalho, a prévia e os controles de ação permanecem acessíveis. Em 800×600, atributos e atividades usam rolagem localizada; em 1024×768, 1280×720 e 1366×768, o conteúdo principal aparece sem sobreposição. As escolhas longas da cena e da missão também ficam em áreas roláveis. Não foi observada arte cortada fora dos painéis, e o estado de bloqueio inclui texto explícito com a energia que falta, não apenas indicação por cor.
+
+As telas de Status e Relações foram renderizadas em 800×600, 1024×768, 1280×720 e 1366×768. As capturas de Status estão em `captures/phase4a/status/`; as 16 capturas de Relações — quatro estados controlados em cada resolução — estão em `captures/phase4a/relationships/`. Relações usa rolagem vertical localizada, sem rolagem horizontal.
 
 A apresentação segue os valores centralizados em `training_theme.gd` e usa as cores índigo, azul-petróleo, menta, coral, dourado e creme definidas pela Bíblia Visual. O resultado é uma interface funcional com placeholder substituível, sem novos assets externos. Os cenários e expressões mantêm o papel de apoio da narrativa e não alteram condições, resultados ou estado da campanha.
 

@@ -178,6 +178,7 @@ func test_hub_navigation_and_state_binding() -> void:
 	var hub_ui: Control = dashboard.get("_hub_ui")
 	var training_ui: Control = dashboard.get("_training_ui")
 	var status_ui: Control = dashboard.get("_status_ui")
+	var relationships_ui: Control = dashboard.get("_relationships_ui")
 	var management_ui: Control = dashboard.get("_management_ui")
 	var nav_buttons: Dictionary[StringName, Button] = dashboard.get("_hub_nav_buttons")
 	var training_nav: Dictionary[StringName, Button] = dashboard.get("_training_nav_buttons")
@@ -252,8 +253,11 @@ func test_hub_navigation_and_state_binding() -> void:
 	assert_eq(
 		dashboard.get("_current_area"),
 		&"relationships",
-		"relationships navigation should focus existing bonds"
+		"relationships navigation should open the independent relationships screen"
 	)
+	assert_true(relationships_ui.visible, "relationships should have its own screen")
+	assert_false(management_ui.visible, "relationships should not show legacy management")
+	assert_false(status_ui.visible, "relationships should replace the Status screen")
 	hub_back_button.pressed.emit()
 	assert_eq(state.actions_remaining, actions_before, "navigation should not consume actions")
 	assert_eq(state.rng_state, rng_before, "navigation should not advance campaign RNG")
@@ -527,6 +531,228 @@ func test_status_screen_is_independent_and_reads_campaign_state() -> void:
 	dashboard.call("_hide_narrative_overlay")
 	assert_true(hub_ui.visible, "closing the narrative should preserve its Hub return behavior")
 	assert_false(status_ui.visible, "narrative close should not leave Status visible")
+
+
+func test_relationships_screen_tracks_existing_bonds_and_shortcuts() -> void:
+	var training: TrainingService = TrainingServiceScript.new()
+	assert_true(training.load_project_data(), "training data should load")
+	var narrative: NarrativeService = NarrativeServiceScript.new()
+	narrative.set_limits(
+		training.get_attribute_cap(),
+		training.get_resource_cap(),
+		training.get_reputation_cap(),
+		training.get_bond_cap()
+	)
+	assert_true(narrative.load_project_data(), "narrative data should load")
+
+	var dashboard: Control = DashboardScript.new()
+	track(dashboard)
+	dashboard.set("_service", training)
+	dashboard.set("_narrative_service", narrative)
+	dashboard.size = Vector2(1280, 720)
+	dashboard.call("_load_phase3_assets")
+	dashboard.call("_build_interface")
+	var state: TrainingState = training.create_initial_state()
+	dashboard.set("_state", state)
+	dashboard.call("_refresh_state")
+
+	var hub_ui: Control = dashboard.get("_hub_ui")
+	var training_ui: Control = dashboard.get("_training_ui")
+	var status_ui: Control = dashboard.get("_status_ui")
+	var relationships_ui: Control = dashboard.get("_relationships_ui")
+	var legacy_ui: Control = dashboard.get("_management_ui")
+	var hub_navigation: Dictionary[StringName, Button] = dashboard.get("_hub_nav_buttons")
+	var training_navigation: Dictionary[StringName, Button] = dashboard.get(
+		"_training_nav_buttons"
+	)
+	var relationship_navigation: Dictionary[StringName, Button] = dashboard.get(
+		"_relationship_nav_buttons"
+	)
+	var name_labels: Dictionary[StringName, Label] = dashboard.get(
+		"_relationship_name_labels"
+	)
+	var cards: Dictionary[StringName, Dictionary] = dashboard.get("_relationship_cards")
+	var shortcuts: Dictionary[StringName, Button] = dashboard.get(
+		"_relationship_activity_buttons"
+	)
+	var viewport_sizes: Array[Vector2] = [
+		Vector2(800, 600),
+		Vector2(1024, 768),
+		Vector2(1280, 720),
+		Vector2(1366, 768),
+	]
+	assert_false(relationships_ui.visible, "the Hub should remain the initial screen")
+	hub_navigation[&"relationships"].pressed.emit()
+	assert_true(relationships_ui.visible, "Hub navigation should open Relationships")
+	assert_false(legacy_ui.visible, "Relationships should be independent of legacy management")
+	assert_false(hub_ui.visible, "Relationships should replace the Hub")
+	assert_false(status_ui.visible, "Relationships should replace Status")
+	assert_eq(dashboard.get("_current_area"), &"relationships")
+	assert_eq(name_labels.size(), 3, "the three existing relationships should be shown")
+	assert_eq(name_labels[&"ray"].text, "Ray")
+	assert_eq(name_labels[&"luppi"].text, "Luppi")
+	assert_eq(name_labels[&"instructor"].text, "Instrutor")
+	assert_eq(cards.size(), training.get_bond_ids().size())
+	for bond_id: StringName in training.get_bond_ids():
+		var card: Dictionary = cards[bond_id]
+		assert_eq(
+			(card["value"] as Label).text,
+			"%d / %d" % [state.bonds[bond_id], training.get_bond_cap()],
+			"relationship values should come from TrainingState"
+		)
+		assert_eq(
+			int((card["bar"] as ProgressBar).value),
+			state.bonds[bond_id],
+			"relationship bars should track TrainingState"
+		)
+		assert_eq(
+			int((card["bar"] as ProgressBar).max_value),
+			training.get_bond_cap(),
+			"relationship bars should use the TrainingService limit"
+		)
+		assert_eq(
+			(card["remaining"] as Label).text,
+			"%d até o limite" % (training.get_bond_cap() - state.bonds[bond_id]),
+			"cards should communicate the remaining distance to the limit"
+		)
+	var ray_style: StyleBoxFlat = (
+		(cards[&"ray"]["panel"] as PanelContainer).get_theme_stylebox("panel")
+		as StyleBoxFlat
+	)
+	var luppi_style: StyleBoxFlat = (
+		(cards[&"luppi"]["panel"] as PanelContainer).get_theme_stylebox("panel")
+		as StyleBoxFlat
+	)
+	var instructor_style: StyleBoxFlat = (
+		(cards[&"instructor"]["panel"] as PanelContainer).get_theme_stylebox("panel")
+		as StyleBoxFlat
+	)
+	assert_ne(ray_style.border_color, luppi_style.border_color)
+	assert_ne(ray_style.border_color, instructor_style.border_color)
+	assert_ne(luppi_style.border_color, instructor_style.border_color)
+	assert_true(
+		String(name_labels[&"ray"].get_parent().get_parent().get_child(1).text)
+		.contains("chifres por mutação"),
+		"Ray's profile should rely on approved character facts"
+	)
+	assert_true(
+		String(name_labels[&"luppi"].get_parent().get_parent().get_child(1).text)
+		.contains("Garota-rato"),
+		"Luppi's profile should rely on approved character facts"
+	)
+	assert_true(
+		String(name_labels[&"instructor"].get_parent().get_parent().get_child(1).text)
+		.contains("não especificado"),
+		"the UI should not invent an instructor profile"
+	)
+	assert_eq(shortcuts.size(), 2, "only the two configured social activities should be linked")
+	assert_eq(
+		String(shortcuts[&"bond_ray"].get_meta("activity_id")),
+		"bond_ray"
+	)
+	assert_eq(
+		String(shortcuts[&"bond_luppi"].get_meta("activity_id")),
+		"bond_luppi"
+	)
+
+	var state_before_navigation: TrainingState = state.duplicate_state()
+	var rng_before: int = state.rng_state
+	for viewport_size: Vector2 in viewport_sizes:
+		relationships_ui.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+		relationships_ui.size = viewport_size
+		dashboard.call("_update_hori_presentation")
+		assert_eq(
+			(dashboard.get("_relationships_scroll") as ScrollContainer).horizontal_scroll_mode,
+			ScrollContainer.SCROLL_MODE_DISABLED,
+			"Relationships should not require horizontal scrolling"
+		)
+		assert_true(
+			(relationships_ui.get_child(0) as Control).anchor_left >= 0.0
+			and (relationships_ui.get_child(0) as Control).anchor_right <= 1.0,
+			"relationship header should remain inside the viewport"
+		)
+		assert_true(
+			is_zero_approx((dashboard.get("_portrait") as TextureRect).position.x),
+			"the shared character portrait should remain left of the relationship cards"
+		)
+	assert_eq(state.actions_remaining, state_before_navigation.actions_remaining)
+	assert_eq(state.week, state_before_navigation.week)
+	assert_eq(state.stats, state_before_navigation.stats)
+	assert_eq(state.energy, state_before_navigation.energy)
+	assert_eq(state.stress, state_before_navigation.stress)
+	assert_eq(state.motivation, state_before_navigation.motivation)
+	assert_eq(state.credits, state_before_navigation.credits)
+	assert_eq(state.reputation, state_before_navigation.reputation)
+	assert_eq(state.bonds, state_before_navigation.bonds)
+	assert_eq(state.rng_state, rng_before, "opening and resizing should not advance RNG")
+
+	shortcuts[&"bond_ray"].pressed.emit()
+	assert_true(training_ui.visible, "Ray shortcut should open the training screen")
+	assert_false(relationships_ui.visible)
+	assert_eq(dashboard.get("_selected_activity"), &"", "shortcut should not confirm or select an activity")
+	assert_eq(
+		state.actions_remaining,
+		state_before_navigation.actions_remaining,
+		"shortcut should not consume an action"
+	)
+	assert_true(
+		training.apply_activity(state, &"bond_ray").is_valid,
+		"the existing Ray social activity should remain service-owned"
+	)
+	dashboard.call("_refresh_state")
+	relationship_navigation[&"relationships"].pressed.emit()
+	assert_eq(
+		(cards[&"ray"]["value"] as Label).text,
+		"%d / %d" % [state.bonds[&"ray"], training.get_bond_cap()],
+		"Ray's bond should refresh after the existing social activity"
+	)
+	assert_eq(
+		state.bonds[&"ray"],
+		int(state_before_navigation.bonds[&"ray"]) + 8,
+		"Ray's increase should come from the configured activity"
+	)
+
+	shortcuts[&"bond_luppi"].pressed.emit()
+	assert_true(training_ui.visible, "Luppi shortcut should open the training screen")
+	assert_eq(dashboard.get("_selected_activity"), &"")
+	assert_true(
+		training.apply_activity(state, &"bond_luppi").is_valid,
+		"the existing Luppi social activity should remain service-owned"
+	)
+	dashboard.call("_refresh_state")
+	hub_navigation[&"relationships"].pressed.emit()
+	assert_eq(
+		(cards[&"luppi"]["value"] as Label).text,
+		"%d / %d" % [state.bonds[&"luppi"], training.get_bond_cap()],
+		"Luppi's bond should refresh from the current campaign state"
+	)
+	assert_eq(
+		state.bonds[&"luppi"],
+		int(state_before_navigation.bonds[&"luppi"]) + 8,
+		"Luppi's increase should come from the configured activity"
+	)
+
+	var relationship_snapshot: TrainingState = state.duplicate_state()
+	dashboard.call("_show_narrative_overlay")
+	assert_false(relationships_ui.visible, "narrative should cover the relationships screen")
+	hub_navigation[&"training"].pressed.emit()
+	assert_eq(
+		dashboard.get("_current_area"),
+		&"relationships",
+		"narrative should prevent relationship navigation"
+	)
+	dashboard.call("_hide_narrative_overlay")
+	assert_true(hub_ui.visible, "narrative completion should retain its Hub return")
+	assert_eq(state.stats, relationship_snapshot.stats)
+	assert_eq(state.energy, relationship_snapshot.energy)
+	assert_eq(state.stress, relationship_snapshot.stress)
+	assert_eq(state.motivation, relationship_snapshot.motivation)
+	assert_eq(state.credits, relationship_snapshot.credits)
+	assert_eq(state.reputation, relationship_snapshot.reputation)
+	assert_eq(state.actions_remaining, relationship_snapshot.actions_remaining)
+	assert_eq(state.week, relationship_snapshot.week)
+	assert_eq(state.bonds, relationship_snapshot.bonds)
+	assert_eq(state.rng_state, relationship_snapshot.rng_state)
 
 
 func _status_attribute_columns(dashboard: Control) -> int:
