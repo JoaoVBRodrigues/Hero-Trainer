@@ -80,10 +80,10 @@ Com Godot 4.5.1 local, passaram:
 
 - Verificação headless do editor (`--headless --editor --quit`), código de saída 0.
 - Smoke test da cena principal (`--headless --quit-after 3`), código de saída 0.
+- Suítes `Training Service`, `Hori Narrative Campaign` e `Dashboard Character Presentation`: 16 métodos, 893 asserções, 0 falhas.
 
-O polimento de navegação, feedback de controles e atualização animada dos indicadores está registrado em [11_POLIMENTO_TRANSICOES_FASE4A6.md](./11_POLIMENTO_TRANSICOES_FASE4A6.md).
-- Suítes `Training Service` e `Hori Narrative Campaign`: 8 métodos de teste, 385 asserções, 0 falhas.
+Os testes de dados inválidos emitem diagnósticos `push_error` esperados para chaves desconhecidas; as asserções confirmam que a rejeição é segura. O Godot AI MCP não iniciou por falha de conexão com o PyPI; as suítes e as capturas da auditoria foram executadas localmente com Godot 4.5.1.
 
-Os testes de dados inválidos emitem diagnósticos `push_error` esperados para chaves desconhecidas; as asserções confirmam que a rejeição é segura. O Godot AI MCP não iniciou: o processo do servidor falhou no handshake ao tentar buscar o pacote do servidor no PyPI, devido a erro de conexão. Portanto, nenhuma suíte nem captura foi executada pelo MCP; as capturas acima vieram do runtime local do Godot.
+O polimento de navegação, feedback de controles e atualização animada dos indicadores está registrado em [11_POLIMENTO_TRANSICOES_FASE4A6.md](./11_POLIMENTO_TRANSICOES_FASE4A6.md). A auditoria de redimensionamento, tela cheia e as capturas das quatro áreas está em [12_AUDITORIA_VISUAL_E_RESOLUCOES_FASE4A7.md](./12_AUDITORIA_VISUAL_E_RESOLUCOES_FASE4A7.md).
 
-A resolução padrão do projeto continua 1024×768. Em 800×600, a rolagem interna é necessária para conteúdo secundário do perfil e da lista de atividades, enquanto o painel de prévia e os botões permanecem visíveis. Não foram adicionados sprites de Ray ou Luppi, animações, save/load, áudio ou persistência do histórico. Os assets recebidos não incluem autoria/licença; confirmar esses dados antes de publicar ou redistribuir o projeto.
+A resolução inicial do projeto é 1280×720, com janela redimensionável. Em 800×600, conteúdo secundário de Status pode exigir rolagem localizada; as atividades, a navegação e os controles essenciais permanecem visíveis. Não foram adicionados sprites de Ray ou Luppi, nem alterados dados, regras, RNG ou narrativa. Os assets recebidos não incluem autoria/licença; confirmar esses dados antes de publicar ou redistribuir o projeto.

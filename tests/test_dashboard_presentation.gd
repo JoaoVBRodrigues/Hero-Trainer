@@ -1199,6 +1199,96 @@ func test_ui_motion_feedback_and_navigation_preserve_campaign_state() -> void:
 	)
 
 
+func test_window_mode_controls_and_shortcuts_preserve_campaign_state() -> void:
+	var training: TrainingService = TrainingServiceScript.new()
+	assert_true(training.load_project_data(), "training data should load")
+	var dashboard: Control = DashboardScript.new()
+	track(dashboard)
+	dashboard.set("_service", training)
+	dashboard.size = Vector2(1280, 720)
+	dashboard.call("_load_phase3_assets")
+	dashboard.call("_build_interface")
+	var state: TrainingState = training.create_initial_state()
+	dashboard.set("_state", state)
+	dashboard.call("_refresh_state")
+
+	assert_eq(
+		ProjectSettings.get_setting("display/window/size/viewport_width"),
+		1280,
+		"the default viewport should use a 16:9 HD window"
+	)
+	assert_eq(
+		ProjectSettings.get_setting("display/window/size/viewport_height"),
+		720,
+		"the default viewport height should be 720"
+	)
+	var window_buttons: Array[Button] = dashboard.get("_window_mode_buttons")
+	assert_eq(window_buttons.size(), 4, "every management screen should expose F11")
+	for button: Button in window_buttons:
+		assert_eq(button.text, "F11", "the fullscreen control should be visible")
+		assert_true(button.focus_mode == Control.FOCUS_ALL, "F11 should support keyboard focus")
+		assert_true(
+			button.tooltip_text.contains("Alt+Enter"),
+			"the button should explain its alternate shortcut"
+		)
+
+	var f11 := InputEventKey.new()
+	f11.keycode = KEY_F11
+	f11.pressed = true
+	assert_true(
+		dashboard.call("_is_window_mode_toggle_shortcut", f11),
+		"F11 should toggle fullscreen"
+	)
+	var alt_enter := InputEventKey.new()
+	alt_enter.keycode = KEY_ENTER
+	alt_enter.alt_pressed = true
+	alt_enter.pressed = true
+	assert_true(
+		dashboard.call("_is_window_mode_toggle_shortcut", alt_enter),
+		"Alt+Enter should toggle fullscreen"
+	)
+	var ordinary_enter := InputEventKey.new()
+	ordinary_enter.keycode = KEY_ENTER
+	ordinary_enter.pressed = true
+	assert_false(
+		dashboard.call("_is_window_mode_toggle_shortcut", ordinary_enter),
+		"ordinary Enter should not change the display mode"
+	)
+	ordinary_enter.keycode = KEY_F11
+	ordinary_enter.pressed = false
+	assert_false(
+		dashboard.call("_is_window_mode_toggle_shortcut", ordinary_enter),
+		"releasing F11 should not toggle fullscreen"
+	)
+	ordinary_enter.pressed = true
+	ordinary_enter.echo = true
+	assert_false(
+		dashboard.call("_is_window_mode_toggle_shortcut", ordinary_enter),
+		"key repeat should not toggle fullscreen"
+	)
+
+	assert_true(
+		dashboard.is_connected("resized", Callable(dashboard, "_update_responsive_layout")),
+		"root window resizing should refresh all responsive layouts"
+	)
+	var actions_before: int = state.actions_remaining
+	var rng_before: int = state.rng_state
+	var stats_before: Dictionary = state.stats.duplicate(true)
+	var bonds_before: Dictionary = state.bonds.duplicate(true)
+	for viewport_size: Vector2 in [
+		Vector2(800, 600),
+		Vector2(1280, 720),
+		Vector2(1920, 1080),
+	]:
+		dashboard.size = viewport_size
+		dashboard.call("_update_responsive_layout")
+		assert_true(dashboard.size == viewport_size, "the resized viewport should be retained")
+	assert_eq(state.actions_remaining, actions_before, "window resizing should not consume actions")
+	assert_eq(state.rng_state, rng_before, "window resizing should not advance campaign RNG")
+	assert_eq(state.stats, stats_before, "window resizing should not change attributes")
+	assert_eq(state.bonds, bonds_before, "window resizing should not change relationships")
+
+
 func _finish_area_transition(dashboard: Control) -> void:
 	var tween: Tween = dashboard.get("_area_transition")
 	if tween != null and tween.is_running():

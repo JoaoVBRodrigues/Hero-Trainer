@@ -49,6 +49,9 @@ var _state: TrainingState
 var _selected_activity: StringName = &""
 var _hori_presentation: HoriPresentation = HoriPresentation.RIGHT_SIDE
 var _current_area: StringName = &"hub"
+var _window_mode_before_fullscreen: int = DisplayServer.WINDOW_MODE_WINDOWED
+var _windowed_size_before_fullscreen: Vector2i = Vector2i.ZERO
+var _window_mode_buttons: Array[Button] = []
 var _scene_textures: Dictionary[StringName, Texture2D] = {}
 var _hori_expression_textures: Dictionary[StringName, Texture2D] = {}
 var _area_transition: Tween
@@ -273,6 +276,7 @@ func _load_phase3_texture(path: String) -> Texture2D:
 
 func _build_interface() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	resized.connect(_update_responsive_layout)
 	theme = TrainingThemeScript.create_theme()
 
 	var background := ColorRect.new()
@@ -322,6 +326,7 @@ func _build_interface() -> void:
 	_build_narrative_overlay()
 	_install_button_feedback(self)
 	_management_ui.visible = false
+	_update_responsive_layout()
 
 
 func _build_transition_overlay() -> void:
@@ -411,6 +416,60 @@ func _kill_control_tween(control: Control, meta_name: String) -> void:
 
 func _reduce_motion_enabled() -> bool:
 	return bool(ProjectSettings.get_setting("accessibility/reduce_motion", false))
+
+
+func _build_window_mode_button() -> Button:
+	var button := Button.new()
+	button.text = "F11"
+	button.tooltip_text = "Alternar tela cheia (F11 ou Alt+Enter)"
+	button.custom_minimum_size = Vector2(48, 34)
+	button.focus_mode = Control.FOCUS_ALL
+	button.add_theme_font_size_override("font_size", 9)
+	button.pressed.connect(_toggle_window_mode)
+	_window_mode_buttons.append(button)
+	return button
+
+
+func _is_window_mode_toggle_shortcut(event: InputEvent) -> bool:
+	if not event is InputEventKey:
+		return false
+	var key_event := event as InputEventKey
+	if not key_event.pressed or key_event.echo:
+		return false
+	return (
+		key_event.keycode == KEY_F11
+		or (key_event.keycode == KEY_ENTER and key_event.alt_pressed)
+	)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not _is_window_mode_toggle_shortcut(event):
+		return
+	_toggle_window_mode()
+	get_viewport().set_input_as_handled()
+
+
+func _toggle_window_mode() -> void:
+	var current_mode: int = DisplayServer.window_get_mode()
+	if current_mode == DisplayServer.WINDOW_MODE_FULLSCREEN:
+		DisplayServer.window_set_mode(_window_mode_before_fullscreen)
+		if (
+			_window_mode_before_fullscreen == DisplayServer.WINDOW_MODE_WINDOWED
+			and _windowed_size_before_fullscreen != Vector2i.ZERO
+		):
+			DisplayServer.window_set_size(_windowed_size_before_fullscreen)
+		return
+	_window_mode_before_fullscreen = current_mode
+	_windowed_size_before_fullscreen = get_window().size
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+
+
+func _update_responsive_layout() -> void:
+	_update_hub_layout()
+	_update_training_layout()
+	_update_status_layout()
+	_update_narrative_panel_layout()
+	_update_hori_presentation()
 
 
 func _build_header() -> PanelContainer:
@@ -919,6 +978,7 @@ func _build_training_header() -> PanelContainer:
 	_training_credits_label = _make_label("", 10)
 	_training_credits_label.add_theme_color_override("font_color", TrainingThemeScript.GOLD)
 	heading.add_child(_training_credits_label)
+	heading.add_child(_build_window_mode_button())
 	_training_progress = ProgressBar.new()
 	_training_progress.min_value = 0
 	_training_progress.max_value = maxi(1, _service.get_total_weeks())
@@ -1391,6 +1451,7 @@ func _build_status_screen() -> void:
 	_status_back_button.custom_minimum_size = Vector2(70, 36)
 	_status_back_button.pressed.connect(_show_hub)
 	header_row.add_child(_status_back_button)
+	header_row.add_child(_build_window_mode_button())
 	_status_ui.add_child(header)
 
 	var profile_panel := PanelContainer.new()
@@ -1799,6 +1860,7 @@ func _build_relationships_screen() -> void:
 	_relationship_back_button.custom_minimum_size = Vector2(70, 36)
 	_relationship_back_button.pressed.connect(_show_hub)
 	header_row.add_child(_relationship_back_button)
+	header_row.add_child(_build_window_mode_button())
 	_relationships_ui.add_child(header)
 
 	var scroll := ScrollContainer.new()
@@ -2719,6 +2781,7 @@ func _build_hub_header() -> PanelContainer:
 	_hub_credits_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_hub_credits_label.add_theme_color_override("font_color", TrainingThemeScript.GOLD)
 	progress_column.add_child(_hub_credits_label)
+	row.add_child(_build_window_mode_button())
 	return panel
 
 
@@ -3425,6 +3488,8 @@ func _finish_narrative_transition(open: bool) -> void:
 
 
 func _update_narrative_panel_layout() -> void:
+	if _narrative_panel == null or _narrative_overlay == null:
+		return
 	match _narrative_mode:
 		&"event_choices", &"mission_choices", &"ending":
 			_narrative_panel.anchor_top = (
