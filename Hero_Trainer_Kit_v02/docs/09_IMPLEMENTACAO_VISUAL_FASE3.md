@@ -4,6 +4,12 @@
 
 Esta entrega aprimora a apresentação do protótipo Godot existente. Treinamento, valores, condições de eventos, escolhas, efeitos, flags, RNG, missão e finais não foram alterados. A campanha e seus rascunhos continuam sob as regras de cânone e aprovação existentes.
 
+## Fase 4A.4 — Status e entrada da campanha
+
+A tela de Status é uma área independente do dashboard, com os cinco atributos, três recursos, créditos, reputação, semana e blocos de ação lidos de `TrainingState` e dos limites de `TrainingService`. O perfil exibe somente os fatos de personalidade existentes para Hori em `characters.json`. O retrato usa o sprite já carregado, sem duplicar o personagem ou alterar os arquivos de arte.
+
+A campanha abre primeiro no Hub da Academia. Um evento narrativo elegível não cobre o HUD durante a inicialização; o fluxo narrativo continua sendo avaliado após uma atividade confirmada e ao avançar a semana, preservando a prioridade dos eventos nesses momentos. A navegação pelo Status não consome ações, altera estado ou avança o RNG.
+
 ## Interface
 
 O dashboard preserva cabeçalho, progresso do semestre, painel da personagem, atividades e prévia. Um fundo contextual fica atrás dos painéis, com tint índigo para manter contraste. O painel da personagem e o modal aceitam retrato com proporção preservada; a falta de retrato de outro personagem continua visível como placeholder, sem gerar ou reutilizar a arte da Hori.

@@ -16,6 +16,7 @@ addons/
 *~
 Thumbs.db
 .DS_Store
+OMNIROUTE_COPILOT_SETUP.md
 
 # Local credentials and secrets
 .env

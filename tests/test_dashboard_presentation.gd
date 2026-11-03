@@ -2,12 +2,33 @@
 extends McpTestSuite
 
 const DashboardScript = preload("res://scripts/training_dashboard.gd")
+const DashboardScene = preload("res://scenes/training_dashboard.tscn")
 const TrainingServiceScript = preload("res://scripts/training_service.gd")
 const NarrativeServiceScript = preload("res://scripts/narrative_service.gd")
 
 
 func suite_name() -> String:
 	return "Dashboard Character Presentation"
+
+
+func test_campaign_launch_shows_hub_before_narrative() -> void:
+	var dashboard: Control = DashboardScene.instantiate()
+	track(dashboard)
+	var tree: SceneTree = Engine.get_main_loop()
+	tree.root.add_child(dashboard)
+	assert_true(
+		(dashboard.get("_hub_ui") as Control).visible,
+		"campaign launch should show the Hub as its initial screen"
+	)
+	assert_false(
+		(dashboard.get("_narrative_overlay") as Control).visible,
+		"campaign launch should not immediately cover the Hub with dialogue"
+	)
+	assert_eq(
+		dashboard.get("_current_area"),
+		&"hub",
+		"campaign should start in the Hub area"
+	)
 
 
 func test_hori_position_modes_preserve_aspect_and_campaign_state() -> void:
@@ -156,6 +177,7 @@ func test_hub_navigation_and_state_binding() -> void:
 
 	var hub_ui: Control = dashboard.get("_hub_ui")
 	var training_ui: Control = dashboard.get("_training_ui")
+	var status_ui: Control = dashboard.get("_status_ui")
 	var management_ui: Control = dashboard.get("_management_ui")
 	var nav_buttons: Dictionary[StringName, Button] = dashboard.get("_hub_nav_buttons")
 	var training_nav: Dictionary[StringName, Button] = dashboard.get("_training_nav_buttons")
@@ -218,8 +240,13 @@ func test_hub_navigation_and_state_binding() -> void:
 	training_nav[&"hub"].pressed.emit()
 	assert_true(hub_ui.visible, "redesigned training should provide a return to the Hub")
 	nav_buttons[&"status"].pressed.emit()
-	assert_eq(dashboard.get("_current_area"), &"status", "status navigation should focus existing stats")
-	assert_true(management_ui.visible, "status should reuse the existing management view")
+	assert_eq(
+		dashboard.get("_current_area"),
+		&"status",
+		"status navigation should open its independent screen"
+	)
+	assert_true(status_ui.visible, "status navigation should open the standalone Status")
+	assert_false(management_ui.visible, "status should not reuse the legacy management view")
 	hub_back_button.pressed.emit()
 	nav_buttons[&"relationships"].pressed.emit()
 	assert_eq(
@@ -271,6 +298,240 @@ func test_hub_navigation_and_state_binding() -> void:
 		actions_before_event,
 		"narrative flow should not consume training actions"
 	)
+
+
+func test_status_screen_is_independent_and_reads_campaign_state() -> void:
+	var training: TrainingService = TrainingServiceScript.new()
+	assert_true(training.load_project_data(), "training data should load")
+	var narrative: NarrativeService = NarrativeServiceScript.new()
+	narrative.set_limits(
+		training.get_attribute_cap(),
+		training.get_resource_cap(),
+		training.get_reputation_cap(),
+		training.get_bond_cap()
+	)
+	assert_true(narrative.load_project_data(), "narrative data should load")
+
+	var dashboard: Control = DashboardScript.new()
+	track(dashboard)
+	dashboard.set("_service", training)
+	dashboard.set("_narrative_service", narrative)
+	dashboard.size = Vector2(1280, 720)
+	dashboard.call("_load_phase3_assets")
+	dashboard.call("_build_interface")
+	var state: TrainingState = training.create_initial_state()
+	dashboard.set("_state", state)
+	dashboard.call("_refresh_state")
+
+	var hub_ui: Control = dashboard.get("_hub_ui")
+	var training_ui: Control = dashboard.get("_training_ui")
+	var status_ui: Control = dashboard.get("_status_ui")
+	var management_ui: Control = dashboard.get("_management_ui")
+	var nav_buttons: Dictionary[StringName, Button] = dashboard.get("_hub_nav_buttons")
+	var status_nav: Dictionary[StringName, Button] = dashboard.get("_status_nav_buttons")
+	var stat_values: Dictionary[StringName, Label] = dashboard.get("_status_stat_values")
+	var stat_bars: Dictionary[StringName, ProgressBar] = dashboard.get("_status_stat_bars")
+	var resource_values: Dictionary[StringName, Label] = dashboard.get(
+		"_status_resource_values"
+	)
+	var resource_bars: Dictionary[StringName, ProgressBar] = dashboard.get(
+		"_status_resource_bars"
+	)
+	var portrait: TextureRect = dashboard.get("_portrait")
+	var stage: Control = dashboard.get("_character_stage")
+	var status_scroll: ScrollContainer = dashboard.get("_status_scroll")
+	var viewport_sizes: Array[Vector2] = [
+		Vector2(800, 600),
+		Vector2(1024, 768),
+		Vector2(1280, 720),
+		Vector2(1366, 768),
+	]
+	assert_false(status_ui.visible, "status should not replace the initial Hub")
+	assert_false(management_ui.visible, "legacy management should remain hidden")
+
+	nav_buttons[&"status"].pressed.emit()
+	assert_true(status_ui.visible, "Hub navigation should open the standalone Status")
+	assert_false(hub_ui.visible, "Status should replace the Hub")
+	assert_false(training_ui.visible, "Status should replace the training screen")
+	assert_false(management_ui.visible, "Status should not reveal legacy management panels")
+	assert_eq(dashboard.get("_current_area"), &"status", "Status should track its navigation area")
+	assert_eq(
+		String(dashboard.get("_status_profile_label").text).split("  ·  ").size(),
+		4,
+		"profile summary should use the existing canonical character facts"
+	)
+	assert_eq(
+		String(dashboard.get("_status_credits_value").text),
+		str(state.credits),
+		"credits should be presented from TrainingState without an invented cap"
+	)
+	assert_eq(
+		String(dashboard.get("_status_reputation_value").text),
+		"%d / %d" % [state.reputation, training.get_reputation_cap()],
+		"reputation should include its service-provided cap"
+	)
+	assert_eq(
+		String(dashboard.get("_status_week_label").text),
+		"SEMANA %02d / %02d" % [state.week, training.get_total_weeks()],
+		"current and total weeks should come from the campaign state and service"
+	)
+	assert_eq(
+		int((dashboard.get("_status_semester_progress") as ProgressBar).value),
+		state.week,
+		"semester progress should track the campaign week"
+	)
+	assert_eq(
+		String(dashboard.get("_status_actions_label").text),
+		"%d / %d AÇÕES" % [state.actions_remaining, training.get_actions_per_week()],
+		"remaining action blocks should come from TrainingState"
+	)
+	assert_eq(stat_values.size(), TrainingState.ATTRIBUTE_IDS.size())
+	assert_eq(stat_bars.size(), TrainingState.ATTRIBUTE_IDS.size())
+	for stat_id: StringName in TrainingState.ATTRIBUTE_IDS:
+		assert_eq(
+			stat_values[stat_id].text,
+			"%d / %d" % [state.stats[stat_id], training.get_attribute_cap()],
+			"status attribute value should match TrainingState"
+		)
+		assert_eq(
+			int(stat_bars[stat_id].value),
+			state.stats[stat_id],
+			"status attribute bar should match TrainingState"
+		)
+		assert_eq(
+			int(stat_bars[stat_id].max_value),
+			training.get_attribute_cap(),
+			"status attribute bar should use the service cap"
+		)
+	for resource_id: StringName in [&"energy", &"stress", &"motivation"]:
+		assert_eq(
+			resource_values[resource_id].text,
+			"%d / %d" % [
+				dashboard.call("_training_resource_value", state, resource_id),
+				training.get_resource_cap(),
+			],
+			"condition values should match TrainingState"
+		)
+		assert_eq(
+			int(resource_bars[resource_id].value),
+			dashboard.call("_training_resource_value", state, resource_id),
+			"condition bars should match TrainingState"
+		)
+		assert_eq(
+			int(resource_bars[resource_id].max_value),
+			training.get_resource_cap(),
+			"condition bars should use the service cap"
+		)
+
+	var rng_before: int = state.rng_state
+	state.stats[&"pot"] = 77
+	state.energy = 18
+	state.stress = 88
+	state.motivation = 23
+	state.credits = 126
+	state.reputation = 42
+	state.week = 6
+	state.actions_remaining = 1
+	var state_after_mutation: TrainingState = state.duplicate_state()
+	dashboard.call("_refresh_state")
+	assert_eq(stat_values[&"pot"].text, "77 / 100", "updated attributes should refresh")
+	assert_eq(int(stat_bars[&"pot"].value), 77, "updated attribute bars should refresh")
+	assert_eq(resource_values[&"energy"].text, "18 / 100", "low energy should be visible")
+	assert_eq(resource_values[&"stress"].text, "88 / 100", "high stress should be visible")
+	assert_eq(resource_values[&"motivation"].text, "23 / 100", "motivation should refresh")
+	assert_eq(int(resource_bars[&"energy"].value), 18)
+	assert_eq(int(resource_bars[&"stress"].value), 88)
+	assert_eq(int(resource_bars[&"motivation"].value), 23)
+	assert_eq(String(dashboard.get("_status_credits_value").text), "126")
+	assert_eq(String(dashboard.get("_status_reputation_value").text), "42 / 100")
+	assert_eq(String(dashboard.get("_status_week_label").text), "SEMANA 06 / 16")
+	assert_eq(
+		String(dashboard.get("_status_actions_label").text),
+		"1 / 3 AÇÕES"
+	)
+
+	status_ui.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	stage.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	for viewport_size: Vector2 in viewport_sizes:
+		status_ui.size = viewport_size
+		stage.size = viewport_size
+		dashboard.call("_update_status_layout")
+		dashboard.call("_update_hori_presentation")
+		assert_eq(
+			_status_attribute_columns(dashboard),
+			2 if viewport_size.x < 1000.0 else 3,
+			"attribute cards should adapt their columns to the viewport width"
+		)
+		assert_eq(
+			status_scroll.horizontal_scroll_mode,
+			ScrollContainer.SCROLL_MODE_DISABLED,
+			"Status should use localized vertical scrolling only"
+		)
+		assert_true(
+			(status_ui.get_child(0) as Control).anchor_left >= 0.0
+			and (status_ui.get_child(0) as Control).anchor_right <= 1.0,
+			"status header should remain inside the viewport"
+		)
+		assert_true(
+			(status_ui.get_child(status_ui.get_child_count() - 1) as Control).anchor_right
+			<= 1.0,
+			"status navigation should remain inside the viewport"
+		)
+		assert_true(
+			is_zero_approx(portrait.position.x),
+			"the shared Hori portrait should frame Status from the left"
+		)
+		assert_true(
+			is_equal_approx(
+				portrait.size.x / portrait.size.y,
+				float(portrait.texture.get_width())
+				/ float(portrait.texture.get_height())
+			),
+			"the Hori portrait should preserve its aspect ratio in Status"
+		)
+
+	assert_eq(state.stats, state_after_mutation.stats, "Status should not alter stats")
+	assert_eq(state.axes, state_after_mutation.axes, "Status should not alter narrative axes")
+	assert_eq(
+		state.route_state,
+		state_after_mutation.route_state,
+		"Status should not alter route state"
+	)
+	assert_eq(state.bonds, state_after_mutation.bonds, "Status should not alter bonds")
+	assert_eq(state.energy, state_after_mutation.energy)
+	assert_eq(state.stress, state_after_mutation.stress)
+	assert_eq(state.motivation, state_after_mutation.motivation)
+	assert_eq(state.credits, state_after_mutation.credits)
+	assert_eq(state.reputation, state_after_mutation.reputation)
+	assert_eq(state.actions_remaining, state_after_mutation.actions_remaining)
+	assert_eq(state.week, state_after_mutation.week)
+	assert_eq(state.rng_state, rng_before, "Status should not advance campaign RNG")
+
+	status_nav[&"hub"].pressed.emit()
+	assert_true(hub_ui.visible, "Status navigation should return to the Hub")
+	assert_false(status_ui.visible, "Status should hide after returning to the Hub")
+	nav_buttons[&"status"].pressed.emit()
+	assert_true(status_ui.visible, "the Hub should reopen the current Status view")
+	dashboard.call("_show_narrative_overlay")
+	assert_true(
+		(dashboard.get("_narrative_overlay") as Control).visible,
+		"narrative should retain priority over Status"
+	)
+	assert_false(status_ui.visible, "narrative presentation should hide Status")
+	dashboard.call("_on_hub_navigation_pressed", &"training")
+	assert_eq(
+		dashboard.get("_current_area"),
+		&"status",
+		"navigation should not change areas while a narrative event is active"
+	)
+	dashboard.call("_hide_narrative_overlay")
+	assert_true(hub_ui.visible, "closing the narrative should preserve its Hub return behavior")
+	assert_false(status_ui.visible, "narrative close should not leave Status visible")
+
+
+func _status_attribute_columns(dashboard: Control) -> int:
+	var grid: GridContainer = dashboard.get("_status_attribute_grid")
+	return grid.columns
 
 
 func test_training_screen_previews_and_applies_service_results() -> void:

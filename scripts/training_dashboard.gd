@@ -37,7 +37,7 @@ const STAT_SHORT_LABELS: Dictionary[StringName, String] = {
 	&"sin": "SIN",
 }
 
-enum HoriPresentation { RIGHT_SIDE, CENTER_STAGE }
+enum HoriPresentation { RIGHT_SIDE, CENTER_STAGE, STATUS_SIDE }
 
 var _service: TrainingService
 var _narrative_service: NarrativeService
@@ -52,7 +52,23 @@ var _character_stage: Control
 var _management_ui: Control
 var _hub_ui: Control
 var _training_ui: Control
+var _status_ui: Control
 var _hub_profile_panel: PanelContainer
+var _status_profile_label: Label
+var _status_name_label: Label
+var _status_week_label: Label
+var _status_actions_label: Label
+var _status_semester_progress: ProgressBar
+var _status_scroll: ScrollContainer
+var _status_attribute_grid: GridContainer
+var _status_stat_values: Dictionary[StringName, Label] = {}
+var _status_stat_bars: Dictionary[StringName, ProgressBar] = {}
+var _status_resource_values: Dictionary[StringName, Label] = {}
+var _status_resource_bars: Dictionary[StringName, ProgressBar] = {}
+var _status_credits_value: Label
+var _status_reputation_value: Label
+var _status_nav_buttons: Dictionary[StringName, Button] = {}
+var _status_back_button: Button
 var _character_panel_scroll: ScrollContainer
 var _activity_scroll: ScrollContainer
 var _status_section: Control
@@ -168,7 +184,6 @@ func _ready() -> void:
 		return
 	_state = _service.create_initial_state()
 	_refresh_state()
-	_process_narrative_flow()
 
 
 func set_character_presentation(
@@ -181,6 +196,8 @@ func set_character_presentation(
 		_profile_name_label.text = display_name
 	if _hub_name_label != null:
 		_hub_name_label.text = display_name
+	if _status_name_label != null:
+		_status_name_label.text = display_name
 	if _portrait != null:
 		var selected_texture: Texture2D = portrait_texture
 		if selected_texture == null and display_name.to_lower() == "hori":
@@ -279,6 +296,7 @@ func _build_interface() -> void:
 	layout.add_child(_build_preview_dock())
 	_build_hub_screen()
 	_build_training_screen()
+	_build_status_screen()
 	_build_narrative_overlay()
 	_management_ui.visible = false
 
@@ -1202,6 +1220,411 @@ func _update_training_layout() -> void:
 				panel.anchor_bottom = preview_bottom
 
 
+func _build_status_screen() -> void:
+	_status_ui = Control.new()
+	_status_ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_status_ui.mouse_filter = Control.MOUSE_FILTER_PASS
+	_status_ui.resized.connect(_update_status_layout)
+	add_child(_status_ui)
+
+	var header := PanelContainer.new()
+	header.anchor_left = 0.315
+	header.anchor_top = 0.018
+	header.anchor_right = 0.982
+	header.anchor_bottom = 0.145
+	header.add_theme_stylebox_override(
+		"panel",
+		TrainingThemeScript.make_panel_style(
+			Color(TrainingThemeScript.PANEL, 0.93),
+			Color(TrainingThemeScript.GOLD, 0.62),
+			14,
+			1
+		)
+	)
+	var header_row := HBoxContainer.new()
+	header_row.add_theme_constant_override("separation", 12)
+	header.add_child(header_row)
+	var identity := VBoxContainer.new()
+	identity.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	identity.add_theme_constant_override("separation", 0)
+	header_row.add_child(identity)
+	var eyebrow := _make_label("HERO TRAINER  /  STATUS DA PERSONAGEM", 9)
+	eyebrow.add_theme_color_override("font_color", TrainingThemeScript.GOLD)
+	identity.add_child(eyebrow)
+	_status_name_label = _make_label("Hori", 21)
+	identity.add_child(_status_name_label)
+
+	var progress_column := VBoxContainer.new()
+	progress_column.custom_minimum_size.x = 150
+	progress_column.add_theme_constant_override("separation", 2)
+	header_row.add_child(progress_column)
+	var progress_labels := HBoxContainer.new()
+	progress_labels.add_theme_constant_override("separation", 5)
+	progress_column.add_child(progress_labels)
+	_status_week_label = _make_label("", 10)
+	_status_week_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	progress_labels.add_child(_status_week_label)
+	_status_actions_label = _make_label("", 9)
+	_status_actions_label.add_theme_color_override("font_color", TrainingThemeScript.MINT)
+	progress_labels.add_child(_status_actions_label)
+	_status_semester_progress = _make_progress_bar(
+		_service.get_total_weeks(),
+		TrainingThemeScript.MINT
+	)
+	_status_semester_progress.custom_minimum_size.y = 8
+	progress_column.add_child(_status_semester_progress)
+
+	_status_back_button = Button.new()
+	_status_back_button.text = "← HUB"
+	_status_back_button.custom_minimum_size = Vector2(70, 36)
+	_status_back_button.pressed.connect(_show_hub)
+	header_row.add_child(_status_back_button)
+	_status_ui.add_child(header)
+
+	var profile_panel := PanelContainer.new()
+	profile_panel.anchor_left = 0.315
+	profile_panel.anchor_top = 0.16
+	profile_panel.anchor_right = 0.982
+	profile_panel.anchor_bottom = 0.265
+	profile_panel.add_theme_stylebox_override(
+		"panel",
+		TrainingThemeScript.make_panel_style(
+			Color(TrainingThemeScript.INK, 0.88),
+			Color(TrainingThemeScript.MINT, 0.44),
+			12,
+			1
+		)
+	)
+	var profile_content := VBoxContainer.new()
+	profile_content.add_theme_constant_override("separation", 2)
+	profile_panel.add_child(profile_content)
+	var profile_title := _make_label("PERFIL  /  PERSONALIDADE CANÔNICA", 8)
+	profile_title.add_theme_color_override("font_color", TrainingThemeScript.MINT)
+	profile_content.add_child(profile_title)
+	_status_profile_label = _make_label(_load_hori_canonical_summary(), 10)
+	_status_profile_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	profile_content.add_child(_status_profile_label)
+	_status_ui.add_child(profile_panel)
+
+	var scroll := ScrollContainer.new()
+	_status_scroll = scroll
+	scroll.anchor_left = 0.315
+	scroll.anchor_top = 0.285
+	scroll.anchor_right = 0.982
+	scroll.anchor_bottom = 0.885
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	_status_ui.add_child(scroll)
+	var content := VBoxContainer.new()
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content.add_theme_constant_override("separation", 8)
+	scroll.add_child(content)
+	content.add_child(_make_section_title("ATRIBUTOS  /  VALOR ATUAL E LIMITE"))
+	_status_attribute_grid = GridContainer.new()
+	_status_attribute_grid.add_theme_constant_override("h_separation", 7)
+	_status_attribute_grid.add_theme_constant_override("v_separation", 6)
+	content.add_child(_status_attribute_grid)
+	for stat_id: StringName in TrainingState.ATTRIBUTE_IDS:
+		var card := PanelContainer.new()
+		card.custom_minimum_size = Vector2(120, 66)
+		card.add_theme_stylebox_override(
+			"panel",
+			TrainingThemeScript.make_panel_style(
+				Color(TrainingThemeScript.PANEL, 0.94),
+				Color(TrainingThemeScript.MINT, 0.26),
+				10,
+				1
+			)
+		)
+		var card_content := VBoxContainer.new()
+		card_content.add_theme_constant_override("separation", 2)
+		card.add_child(card_content)
+		var heading := HBoxContainer.new()
+		heading.add_theme_constant_override("separation", 5)
+		card_content.add_child(heading)
+		var name_label := _make_label(STAT_LABELS[stat_id], 9)
+		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		heading.add_child(name_label)
+		var value_label := _make_label("", 12)
+		value_label.add_theme_color_override("font_color", TrainingThemeScript.CREAM)
+		heading.add_child(value_label)
+		var bar := _make_progress_bar(
+			_service.get_attribute_cap(),
+			TrainingThemeScript.MINT
+		)
+		bar.custom_minimum_size.y = 7
+		card_content.add_child(bar)
+		_status_attribute_grid.add_child(card)
+		_status_stat_values[stat_id] = value_label
+		_status_stat_bars[stat_id] = bar
+
+	content.add_child(_make_section_title("CONDIÇÃO ATUAL"))
+	var resource_grid := GridContainer.new()
+	resource_grid.columns = 3
+	resource_grid.add_theme_constant_override("h_separation", 7)
+	resource_grid.add_theme_constant_override("v_separation", 6)
+	content.add_child(resource_grid)
+	_add_status_resource_card(
+		resource_grid,
+		&"energy",
+		"ENERGIA",
+		TrainingThemeScript.MINT
+	)
+	_add_status_resource_card(
+		resource_grid,
+		&"stress",
+		"ESTRESSE",
+		TrainingThemeScript.CORAL
+	)
+	_add_status_resource_card(
+		resource_grid,
+		&"motivation",
+		"MOTIVAÇÃO",
+		TrainingThemeScript.GOLD
+	)
+
+	content.add_child(_make_section_title("ECONOMIA E PRESTÍGIO"))
+	var economy_row := HBoxContainer.new()
+	economy_row.add_theme_constant_override("separation", 7)
+	content.add_child(economy_row)
+	_status_credits_value = _add_status_economy_card(
+		economy_row,
+		"CRÉDITOS",
+		TrainingThemeScript.GOLD
+	)
+	_status_reputation_value = _add_status_economy_card(
+		economy_row,
+		"REPUTAÇÃO",
+		TrainingThemeScript.MINT
+	)
+	_status_ui.add_child(_build_status_navigation())
+	_status_ui.visible = false
+	_update_status_layout()
+	_update_status_state()
+
+
+func _load_hori_canonical_summary() -> String:
+	const CHARACTER_DATA_PATH: String = (
+		"res://Hero_Trainer_Kit_v02/data/characters.json"
+	)
+	var file := FileAccess.open(CHARACTER_DATA_PATH, FileAccess.READ)
+	if file == null:
+		push_error(
+			"Não foi possível abrir os dados de personagem: %s."
+			% CHARACTER_DATA_PATH
+		)
+		return ""
+	var parser := JSON.new()
+	var parse_error: Error = parser.parse(file.get_as_text())
+	if parse_error != OK:
+		push_error(
+			"Falha ao interpretar %s: %s."
+			% [CHARACTER_DATA_PATH, parser.get_error_message()]
+		)
+		return ""
+	var root: Variant = parser.data
+	if not root is Dictionary:
+		push_error("A raiz de characters.json precisa ser um objeto.")
+		return ""
+	var characters: Variant = root.get("characters", [])
+	if not characters is Array:
+		push_error("characters.json precisa conter a lista 'characters'.")
+		return ""
+	for character: Variant in characters:
+		if not character is Dictionary or character.get("id", "") != "hori":
+			continue
+		var canon: Variant = character.get("canon", {})
+		if not canon is Dictionary:
+			push_error("A entrada canônica da Hori precisa ser um objeto.")
+			return ""
+		var personality: Variant = canon.get("personality", [])
+		if not personality is Array:
+			push_error("A personalidade canônica da Hori precisa ser uma lista.")
+			return ""
+		var facts := PackedStringArray()
+		for fact: Variant in personality:
+			if fact is String and not String(fact).is_empty():
+				facts.append(String(fact))
+		if facts.is_empty():
+			push_error("Não há informações canônicas de personalidade da Hori.")
+			return ""
+		var summary: String = "  ·  ".join(facts)
+		return summary.left(1).to_upper() + summary.substr(1)
+	push_error("Hori não foi encontrada em characters.json.")
+	return ""
+
+
+func _add_status_resource_card(
+	parent: GridContainer,
+	resource_id: StringName,
+	title: String,
+	accent: Color
+) -> void:
+	var card := PanelContainer.new()
+	card.custom_minimum_size = Vector2(100, 54)
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.add_theme_stylebox_override(
+		"panel",
+		TrainingThemeScript.make_panel_style(
+			Color(TrainingThemeScript.PANEL, 0.92),
+			Color(accent, 0.32),
+			9,
+			1
+		)
+	)
+	var card_content := VBoxContainer.new()
+	card_content.add_theme_constant_override("separation", 2)
+	card.add_child(card_content)
+	var heading := HBoxContainer.new()
+	heading.add_theme_constant_override("separation", 4)
+	card_content.add_child(heading)
+	var name_label := _make_label(title, 8)
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_label.add_theme_color_override("font_color", accent)
+	heading.add_child(name_label)
+	var value_label := _make_label("", 10)
+	heading.add_child(value_label)
+	var bar := _make_progress_bar(_service.get_resource_cap(), accent)
+	bar.custom_minimum_size.y = 6
+	card_content.add_child(bar)
+	parent.add_child(card)
+	_status_resource_values[resource_id] = value_label
+	_status_resource_bars[resource_id] = bar
+
+
+func _add_status_economy_card(
+	parent: HBoxContainer,
+	title: String,
+	accent: Color
+) -> Label:
+	var card := PanelContainer.new()
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.custom_minimum_size.y = 42
+	card.add_theme_stylebox_override(
+		"panel",
+		TrainingThemeScript.make_panel_style(
+			Color(TrainingThemeScript.PANEL, 0.92),
+			Color(accent, 0.34),
+			9,
+			1
+		)
+	)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	card.add_child(row)
+	var title_label := _make_label(title, 9)
+	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_label.add_theme_color_override("font_color", accent)
+	row.add_child(title_label)
+	var value_label := _make_label("", 13)
+	row.add_child(value_label)
+	parent.add_child(card)
+	return value_label
+
+
+func _build_status_navigation() -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.anchor_left = 0.315
+	panel.anchor_top = 0.91
+	panel.anchor_right = 0.982
+	panel.anchor_bottom = 0.985
+	var style := TrainingThemeScript.make_panel_style(
+		Color(TrainingThemeScript.INK, 0.97),
+		Color(TrainingThemeScript.GOLD, 0.72),
+		12,
+		1
+	)
+	style.content_margin_top = 3
+	style.content_margin_bottom = 3
+	style.content_margin_left = 6
+	style.content_margin_right = 6
+	panel.add_theme_stylebox_override("panel", style)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 5)
+	panel.add_child(row)
+	for area: StringName in [&"hub", &"training", &"status", &"relationships"]:
+		var button := Button.new()
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		button.text = _hub_area_label(area)
+		button.focus_mode = Control.FOCUS_ALL
+		button.add_theme_font_size_override("font_size", 9)
+		button.pressed.connect(_on_hub_navigation_pressed.bind(area))
+		row.add_child(button)
+		_status_nav_buttons[area] = button
+	_update_status_navigation()
+	return panel
+
+
+func _update_status_layout() -> void:
+	if _status_ui == null or _status_attribute_grid == null:
+		return
+	_status_attribute_grid.columns = 2 if _status_ui.size.x < 1000.0 else 3
+
+
+func _update_status_navigation() -> void:
+	for area: StringName in _status_nav_buttons:
+		var active: bool = area == _current_area
+		var button: Button = _status_nav_buttons[area]
+		button.add_theme_stylebox_override(
+			"normal",
+			TrainingThemeScript.make_panel_style(
+				Color(TrainingThemeScript.PETROL, 0.88)
+				if active
+				else Color(TrainingThemeScript.PANEL, 0.52),
+				TrainingThemeScript.GOLD
+				if active
+				else Color(TrainingThemeScript.MINT, 0.38),
+				9,
+				1
+			)
+		)
+		button.add_theme_stylebox_override(
+			"hover",
+			TrainingThemeScript.make_panel_style(
+				Color(TrainingThemeScript.PETROL, 0.95),
+				TrainingThemeScript.MINT,
+				9,
+				1
+			)
+		)
+
+
+func _update_status_state() -> void:
+	if _state == null or _status_ui == null:
+		return
+	_status_week_label.text = "SEMANA %02d / %02d" % [
+		_state.week,
+		_service.get_total_weeks(),
+	]
+	_status_actions_label.text = "%d / %d AÇÕES" % [
+		_state.actions_remaining,
+		_service.get_actions_per_week(),
+	]
+	_status_semester_progress.max_value = maxi(1, _service.get_total_weeks())
+	_status_semester_progress.value = _state.week
+	for stat_id: StringName in TrainingState.ATTRIBUTE_IDS:
+		var value: int = int(_state.stats[stat_id])
+		_status_stat_values[stat_id].text = "%d / %d" % [
+			value,
+			_service.get_attribute_cap(),
+		]
+		_status_stat_bars[stat_id].value = value
+	for resource_id: StringName in _status_resource_bars:
+		var value: int = _training_resource_value(_state, resource_id)
+		_status_resource_values[resource_id].text = "%d / %d" % [
+			value,
+			_service.get_resource_cap(),
+		]
+		_status_resource_bars[resource_id].value = value
+	_status_credits_value.text = str(_state.credits)
+	_status_reputation_value.text = "%d / %d" % [
+		_state.reputation,
+		_service.get_reputation_cap(),
+	]
+	_update_status_navigation()
+
+
 func _update_training_navigation() -> void:
 	for area: StringName in _training_nav_buttons:
 		var active: bool = area == _current_area
@@ -1962,13 +2385,23 @@ func _show_management_area(area: StringName) -> void:
 	_current_area = area
 	_hub_ui.visible = false
 	_training_ui.visible = area == &"training"
-	_management_ui.visible = area != &"training"
+	_status_ui.visible = area == &"status"
+	_management_ui.visible = area != &"training" and area != &"status"
+	if area == &"status":
+		_update_status_state()
 	_update_training_navigation()
-	_set_hori_presentation(HoriPresentation.RIGHT_SIDE)
+	_update_status_navigation()
+	_set_hori_presentation(
+		HoriPresentation.STATUS_SIDE
+		if area == &"status"
+		else HoriPresentation.RIGHT_SIDE
+	)
 	call_deferred("_focus_management_area", area)
 
 
 func _focus_management_area(area: StringName) -> void:
+	if area == &"status":
+		return
 	if _character_panel_scroll == null:
 		return
 	match area:
@@ -1995,10 +2428,12 @@ func _show_hub() -> void:
 	_hub_ui.visible = true
 	_management_ui.visible = false
 	_training_ui.visible = false
+	_status_ui.visible = false
 	_set_scene_context(&"academy")
 	_set_hori_presentation(HoriPresentation.RIGHT_SIDE)
 	_update_hub_state()
 	_update_training_navigation()
+	_update_status_navigation()
 
 
 func _update_hub_state() -> void:
@@ -2242,20 +2677,28 @@ func _update_hori_presentation() -> void:
 	var max_height: float = stage_size.y * (
 		0.96
 		if _hori_presentation == HoriPresentation.CENTER_STAGE
+		else 0.90
+		if _hori_presentation == HoriPresentation.STATUS_SIDE
 		else 0.94
 	)
 	var max_width: float = stage_size.x * (
 		0.58
 		if _hori_presentation == HoriPresentation.CENTER_STAGE
+		else 0.30
+		if _hori_presentation == HoriPresentation.STATUS_SIDE
 		else 0.50
 	)
 	var portrait_width: float = minf(max_width, max_height * aspect_ratio)
 	var portrait_height: float = portrait_width / aspect_ratio
 	_portrait.size = Vector2(portrait_width, portrait_height)
 	_portrait.position = Vector2(
-		(stage_size.x - portrait_width) * 0.5
-		if _hori_presentation == HoriPresentation.CENTER_STAGE
-		else stage_size.x - portrait_width,
+		0.0
+		if _hori_presentation == HoriPresentation.STATUS_SIDE
+		else (
+			(stage_size.x - portrait_width) * 0.5
+			if _hori_presentation == HoriPresentation.CENTER_STAGE
+			else stage_size.x - portrait_width
+		),
 		stage_size.y - portrait_height
 	)
 
@@ -2266,6 +2709,7 @@ func _show_narrative_overlay() -> void:
 	_management_ui.visible = false
 	_hub_ui.visible = false
 	_training_ui.visible = false
+	_status_ui.visible = false
 	_narrative_overlay.visible = true
 
 
@@ -2274,10 +2718,12 @@ func _hide_narrative_overlay() -> void:
 	_current_area = &"hub"
 	_management_ui.visible = false
 	_training_ui.visible = false
+	_status_ui.visible = false
 	_hub_ui.visible = true
 	_set_hori_presentation(HoriPresentation.RIGHT_SIDE)
 	_update_hub_state()
 	_update_training_navigation()
+	_update_status_navigation()
 
 
 func _update_narrative_panel_layout() -> void:
@@ -2999,6 +3445,7 @@ func _refresh_state() -> void:
 	else:
 		_advance_button.text = "Avançar semana"
 	_update_hub_state()
+	_update_status_state()
 
 
 func _set_resource_display(resource_id: StringName, value: int) -> void:
