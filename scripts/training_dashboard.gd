@@ -30,13 +30,18 @@ const STAT_LABELS: Dictionary[StringName, String] = {
 	&"sin": "Sincronia",
 }
 
+enum HoriPresentation { RIGHT_SIDE, CENTER_STAGE }
+
 var _service: TrainingService
 var _narrative_service: NarrativeService
 var _state: TrainingState
 var _selected_activity: StringName = &""
+var _hori_presentation: HoriPresentation = HoriPresentation.RIGHT_SIDE
 var _scene_textures: Dictionary[StringName, Texture2D] = {}
 var _hori_expression_textures: Dictionary[StringName, Texture2D] = {}
 var _background: TextureRect
+var _character_stage: Control
+var _management_ui: Control
 var _character_name_label: Label
 var _profile_name_label: Label
 var _week_label: Label
@@ -60,16 +65,13 @@ var _feedback_label: Label
 var _confirm_button: Button
 var _cancel_button: Button
 var _advance_button: Button
+var _narrative_panel: PanelContainer
 var _narrative_overlay: Control
 var _narrative_title: Label
 var _narrative_meta: Label
 var _narrative_speaker: Label
 var _narrative_body: Label
 var _narrative_result: Label
-var _dialogue_portrait: TextureRect
-var _dialogue_portrait_placeholder: Control
-var _dialogue_portrait_placeholder_label: Label
-var _dialogue_portrait_name: Label
 var _dialogue_history_toggle: Button
 var _dialogue_history_scroll: ScrollContainer
 var _dialogue_history_content: VBoxContainer
@@ -135,6 +137,7 @@ func set_character_presentation(
 			if selected_texture == null
 			else ""
 		)
+		_update_hori_presentation()
 
 
 func _load_phase3_assets() -> void:
@@ -202,6 +205,8 @@ func _build_interface() -> void:
 	backdrop_tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(backdrop_tint)
 
+	_build_character_stage()
+
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	margin.add_theme_constant_override("margin_left", 14)
@@ -209,6 +214,7 @@ func _build_interface() -> void:
 	margin.add_theme_constant_override("margin_right", 14)
 	margin.add_theme_constant_override("margin_bottom", 12)
 	add_child(margin)
+	_management_ui = margin
 
 	var layout := VBoxContainer.new()
 	layout.add_theme_constant_override("separation", 10)
@@ -304,7 +310,6 @@ func _build_character_panel() -> PanelContainer:
 	content.add_theme_constant_override("separation", 7)
 	scroll.add_child(content)
 	content.add_child(_make_section_title("CADETE  /  PERFIL"))
-	content.add_child(_build_portrait_slot())
 	_profile_name_label = _make_label("Hori", 16)
 	_profile_name_label.add_theme_color_override("font_color", TrainingThemeScript.CREAM)
 	content.add_child(_profile_name_label)
@@ -323,30 +328,25 @@ func _build_character_panel() -> PanelContainer:
 	return panel
 
 
-func _build_portrait_slot() -> PanelContainer:
-	var slot := PanelContainer.new()
-	slot.custom_minimum_size = Vector2(0, 178)
-	slot.add_theme_stylebox_override(
-		"panel",
-		TrainingThemeScript.make_panel_style(
-			Color(TrainingThemeScript.PETROL, 0.38),
-			Color(TrainingThemeScript.MINT, 0.52),
-			10,
-			1
-		)
-	)
+func _build_character_stage() -> void:
+	_character_stage = Control.new()
+	_character_stage.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_character_stage.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_character_stage.resized.connect(_update_hori_presentation)
+	add_child(_character_stage)
+
 	_portrait = TextureRect.new()
-	_portrait.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_portrait.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 	_portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_portrait.texture = _hori_expression_textures.get(&"neutral")
 	_portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	slot.add_child(_portrait)
+	_character_stage.add_child(_portrait)
 
 	var placeholder := CenterContainer.new()
 	placeholder.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	placeholder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	slot.add_child(placeholder)
+	_character_stage.add_child(placeholder)
 	var placeholder_text := _make_label("◈\nRETRATO PROVISÓRIO", 12)
 	placeholder_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	placeholder_text.add_theme_color_override("font_color", TrainingThemeScript.MINT)
@@ -354,7 +354,8 @@ func _build_portrait_slot() -> PanelContainer:
 	_portrait_placeholder = placeholder
 	_portrait_placeholder_label = placeholder_text
 	_portrait_placeholder.visible = _portrait.texture == null
-	return slot
+	_set_hori_presentation(HoriPresentation.RIGHT_SIDE)
+	call_deferred("_update_hori_presentation")
 
 
 func _build_stat_grid() -> GridContainer:
@@ -674,96 +675,40 @@ func _build_narrative_overlay() -> void:
 	add_child(_narrative_overlay)
 
 	var shade := ColorRect.new()
-	shade.color = Color(TrainingThemeScript.INK, 0.88)
+	shade.color = Color(TrainingThemeScript.INK, 0.20)
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_narrative_overlay.add_child(shade)
 
-	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	center.add_theme_constant_override("margin_left", 20)
-	center.add_theme_constant_override("margin_top", 20)
-	center.add_theme_constant_override("margin_right", 20)
-	center.add_theme_constant_override("margin_bottom", 20)
-	_narrative_overlay.add_child(center)
-
-	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(740, 520)
-	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	panel.add_theme_stylebox_override(
+	_narrative_panel = PanelContainer.new()
+	_narrative_panel.anchor_left = 0.025
+	_narrative_panel.anchor_top = 0.54
+	_narrative_panel.anchor_right = 0.975
+	_narrative_panel.anchor_bottom = 0.98
+	_narrative_panel.add_theme_stylebox_override(
 		"panel",
 		TrainingThemeScript.make_panel_style(
-			TrainingThemeScript.PANEL,
+			Color(TrainingThemeScript.PANEL, 0.96),
 			TrainingThemeScript.GOLD,
-			14,
-			2
-		)
-	)
-	center.add_child(panel)
-
-	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 18)
-	margin.add_theme_constant_override("margin_top", 16)
-	margin.add_theme_constant_override("margin_right", 18)
-	margin.add_theme_constant_override("margin_bottom", 16)
-	panel.add_child(margin)
-
-	var columns := HBoxContainer.new()
-	columns.add_theme_constant_override("separation", 14)
-	margin.add_child(columns)
-
-	var portrait_panel := PanelContainer.new()
-	portrait_panel.custom_minimum_size.x = 142
-	portrait_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	portrait_panel.add_theme_stylebox_override(
-		"panel",
-		TrainingThemeScript.make_panel_style(
-			Color(TrainingThemeScript.PETROL, 0.26),
-			Color(TrainingThemeScript.MINT, 0.4),
-			10,
+			18,
 			1
 		)
 	)
-	columns.add_child(portrait_panel)
-	var portrait_column := VBoxContainer.new()
-	portrait_column.add_theme_constant_override("separation", 8)
-	portrait_panel.add_child(portrait_column)
-	_dialogue_portrait = TextureRect.new()
-	_dialogue_portrait.custom_minimum_size = Vector2(124, 270)
-	_dialogue_portrait.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_dialogue_portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_dialogue_portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_dialogue_portrait.texture = _hori_expression_textures.get(&"neutral")
-	_dialogue_portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	portrait_column.add_child(_dialogue_portrait)
-	var portrait_placeholder := CenterContainer.new()
-	portrait_placeholder.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	portrait_placeholder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	portrait_panel.add_child(portrait_placeholder)
-	_dialogue_portrait_placeholder_label = _make_label(
-		"RETRATO PENDENTE",
-		10
-	)
-	_dialogue_portrait_placeholder_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_dialogue_portrait_placeholder_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_dialogue_portrait_placeholder_label.add_theme_color_override(
-		"font_color",
-		TrainingThemeScript.MINT
-	)
-	portrait_placeholder.add_child(_dialogue_portrait_placeholder_label)
-	_dialogue_portrait_placeholder = portrait_placeholder
-	_dialogue_portrait_placeholder.visible = _dialogue_portrait.texture == null
-	_dialogue_portrait_name = _make_label("HORI", 12)
-	_dialogue_portrait_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_dialogue_portrait_name.add_theme_color_override("font_color", TrainingThemeScript.GOLD)
-	portrait_column.add_child(_dialogue_portrait_name)
+	_narrative_overlay.add_child(_narrative_panel)
+	_narrative_overlay.resized.connect(_update_narrative_panel_layout)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 16)
+	margin.add_theme_constant_override("margin_top", 12)
+	margin.add_theme_constant_override("margin_right", 16)
+	margin.add_theme_constant_override("margin_bottom", 12)
+	_narrative_panel.add_child(margin)
 
 	var content := VBoxContainer.new()
 	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	content.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	content.add_theme_constant_override("separation", 7)
-	columns.add_child(content)
+	margin.add_child(content)
 	_narrative_meta = _make_label("", 10)
 	_narrative_meta.add_theme_color_override("font_color", TrainingThemeScript.MINT)
 	content.add_child(_narrative_meta)
@@ -801,7 +746,7 @@ func _build_narrative_overlay() -> void:
 	content.add_child(_narrative_speaker)
 	_narrative_body = _make_label("", 15)
 	_narrative_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_narrative_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_narrative_body.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	_narrative_body.custom_minimum_size.y = 96
 	content.add_child(_narrative_body)
 	_dialogue_history_toggle = Button.new()
@@ -879,6 +824,71 @@ func _set_scene_context(scene_id: StringName) -> void:
 	_background.visible = texture != null
 
 
+func _set_hori_presentation(presentation: HoriPresentation) -> void:
+	_hori_presentation = presentation
+	_update_hori_presentation()
+
+
+func _update_hori_presentation() -> void:
+	if _portrait == null or _portrait.texture == null or _character_stage == null:
+		return
+	var source_size: Vector2i = _portrait.texture.get_size()
+	if source_size.x <= 0.0 or source_size.y <= 0.0:
+		return
+	var aspect_ratio: float = float(source_size.x) / float(source_size.y)
+	var stage_size: Vector2 = _character_stage.size
+	var max_height: float = stage_size.y * (
+		0.96
+		if _hori_presentation == HoriPresentation.CENTER_STAGE
+		else 0.94
+	)
+	var max_width: float = stage_size.x * (
+		0.58
+		if _hori_presentation == HoriPresentation.CENTER_STAGE
+		else 0.50
+	)
+	var portrait_width: float = minf(max_width, max_height * aspect_ratio)
+	var portrait_height: float = portrait_width / aspect_ratio
+	_portrait.size = Vector2(portrait_width, portrait_height)
+	_portrait.position = Vector2(
+		(stage_size.x - portrait_width) * 0.5
+		if _hori_presentation == HoriPresentation.CENTER_STAGE
+		else stage_size.x - portrait_width,
+		stage_size.y - portrait_height
+	)
+
+
+func _show_narrative_overlay() -> void:
+	_set_hori_presentation(HoriPresentation.CENTER_STAGE)
+	_update_narrative_panel_layout()
+	_management_ui.visible = false
+	_narrative_overlay.visible = true
+
+
+func _hide_narrative_overlay() -> void:
+	_narrative_overlay.visible = false
+	_management_ui.visible = true
+	_set_hori_presentation(HoriPresentation.RIGHT_SIDE)
+
+
+func _update_narrative_panel_layout() -> void:
+	match _narrative_mode:
+		&"event_choices", &"mission_choices", &"ending":
+			_narrative_panel.anchor_top = (
+				0.34
+				if _narrative_overlay.size.y < 660.0
+				else 0.39
+			)
+		&"event_result", &"mission_result":
+			_narrative_panel.anchor_top = 0.48
+		_:
+			_narrative_panel.anchor_top = (
+				0.46
+				if _narrative_overlay.size.y < 660.0
+				else 0.54
+			)
+
+
 func _set_scene_for_activity(activity_id: StringName) -> void:
 	match activity_id:
 		&"lab", &"control":
@@ -896,20 +906,19 @@ func _set_scene_for_event(event_id: StringName) -> void:
 
 
 func _set_dialogue_portrait(speaker_id: String, expression_id: StringName) -> void:
-	var is_hori: bool = speaker_id == "hori"
-	var texture: Texture2D = null
-	if is_hori:
-		texture = _hori_expression_textures.get(expression_id)
-		if texture == null:
-			texture = _hori_expression_textures.get(&"neutral")
-	_dialogue_portrait.texture = texture
-	_dialogue_portrait_placeholder.visible = texture == null
-	_dialogue_portrait_placeholder_label.text = (
-		"RETRATO PENDENTE\n%s" % _display_speaker(speaker_id)
-		if not is_hori
-		else "RETRATO DA HORI PENDENTE"
+	if speaker_id != "hori":
+		return
+	var texture: Texture2D = _hori_expression_textures.get(expression_id)
+	if texture == null:
+		texture = _hori_expression_textures.get(&"neutral")
+	_portrait.texture = texture
+	_portrait_placeholder.visible = texture == null
+	_portrait_placeholder_label.text = (
+		"RETRATO DA HORI PENDENTE"
+		if texture == null
+		else ""
 	)
-	_dialogue_portrait_name.text = _display_speaker(speaker_id)
+	_update_hori_presentation()
 
 
 func _hori_expression_for_line(event_id: StringName, line_index: int) -> StringName:
@@ -1017,14 +1026,15 @@ func _open_narrative_event(event: Dictionary) -> void:
 	_active_event_id = StringName(event["id"])
 	_active_dialogue = event["dialogue"]
 	_dialogue_index = 0
-	_narrative_body.custom_minimum_size.y = 96
-	_narrative_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_narrative_body.custom_minimum_size.y = 64
+	_narrative_body.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	_mission_steps.visible = false
 	_mission_requirement_note.visible = false
 	_dialogue_history_toggle.visible = true
 	_narrative_choice_scroll.visible = false
 	_clear_dialogue_history()
 	_set_scene_for_event(_active_event_id)
+	_set_dialogue_portrait("hori", &"neutral")
 	_narrative_mode = &"event_dialogue"
 	_narrative_title.text = String(event["title"])
 	_narrative_meta.text = (
@@ -1035,7 +1045,7 @@ func _open_narrative_event(event: Dictionary) -> void:
 		]
 	)
 	_narrative_result.text = ""
-	_narrative_overlay.visible = true
+	_show_narrative_overlay()
 	_show_event_dialogue_line()
 
 
@@ -1066,6 +1076,8 @@ func _show_event_choices() -> void:
 	_narrative_mode = &"event_choices"
 	_narrative_speaker.text = ""
 	_narrative_body.text = "Escolha como responder. A decisão não consome um bloco de treinamento."
+	_narrative_body.custom_minimum_size.y = 48
+	_narrative_body.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	_narrative_result.text = ""
 	_mission_steps.visible = false
 	_mission_requirement_note.visible = false
@@ -1079,6 +1091,7 @@ func _show_event_choices() -> void:
 			String(choice["label"]),
 			StringName(choice["id"])
 		)
+	_update_narrative_panel_layout()
 
 
 func _open_mission_stage() -> void:
@@ -1132,7 +1145,7 @@ func _open_mission_stage() -> void:
 		var choice_text: String = String(choice["label"])
 		choice_text += "\n" + preview.message
 		_add_narrative_choice_button(choice_text, choice_id)
-	_narrative_overlay.visible = true
+	_show_narrative_overlay()
 
 
 func _show_campaign_ending() -> void:
@@ -1144,7 +1157,7 @@ func _show_campaign_ending() -> void:
 	_set_scene_context(&"observatory")
 	_set_dialogue_portrait("hori", &"neutral")
 	_narrative_body.custom_minimum_size.y = 96
-	_narrative_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_narrative_body.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	_narrative_mode = &"ending"
 	_mission_steps.visible = true
 	_update_mission_progress(3)
@@ -1167,12 +1180,12 @@ func _show_campaign_ending() -> void:
 	_narrative_continue.text = "Fechar final"
 	_narrative_continue.visible = true
 	_clear_narrative_choices()
-	_narrative_overlay.visible = true
+	_show_narrative_overlay()
 
 
 func _add_narrative_choice_button(label_text: String, choice_id: StringName) -> void:
 	var button := Button.new()
-	button.custom_minimum_size.y = 58
+	button.custom_minimum_size.y = 46
 	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	button.focus_mode = Control.FOCUS_ALL
 	var inset := MarginContainer.new()
@@ -1221,6 +1234,8 @@ func _on_narrative_choice_pressed(choice_id: StringName) -> void:
 		if _narrative_mode == &"event_choices"
 		else &"mission_result"
 	)
+	_narrative_body.custom_minimum_size.y = 64
+	_narrative_body.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	_narrative_speaker.text = "RESULTADO"
 	_narrative_body.text = result.message
 	_narrative_choice_scroll.visible = false
@@ -1250,6 +1265,7 @@ func _on_narrative_choice_pressed(choice_id: StringName) -> void:
 		else "Próxima etapa"
 	)
 	_narrative_continue.visible = true
+	_update_narrative_panel_layout()
 	_refresh_state()
 
 
@@ -1262,7 +1278,7 @@ func _on_narrative_continue_pressed() -> void:
 			else:
 				_show_event_choices()
 		&"event_result":
-			_narrative_overlay.visible = false
+			_hide_narrative_overlay()
 			_narrative_mode = &""
 			_active_event.clear()
 			_active_event_id = &""
@@ -1274,14 +1290,14 @@ func _on_narrative_continue_pressed() -> void:
 			if _narrative_service.is_mission_due(_state):
 				_open_mission_stage()
 			else:
-				_narrative_overlay.visible = false
+				_hide_narrative_overlay()
 				_narrative_mode = &""
 				_active_mission_stage.clear()
 				_set_scene_context(&"academy")
 				_refresh_state()
 				_process_narrative_flow()
 		&"ending":
-			_narrative_overlay.visible = false
+			_hide_narrative_overlay()
 			_narrative_mode = &""
 			_set_scene_context(&"academy")
 
