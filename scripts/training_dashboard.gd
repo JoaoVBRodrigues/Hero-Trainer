@@ -5,6 +5,23 @@ signal week_completed(week_number: int)
 const TrainingServiceScript = preload("res://scripts/training_service.gd")
 const TrainingThemeScript = preload("res://scripts/training_theme.gd")
 const NarrativeServiceScript = preload("res://scripts/narrative_service.gd")
+const SCENE_ASSET_PATHS: Dictionary[StringName, String] = {
+	&"academy": "res://assets/phase3/backgrounds/academy_room_bg.png",
+	&"laboratory": "res://assets/phase3/backgrounds/laboratory_bg.png",
+	&"observatory": "res://assets/phase3/backgrounds/observatory_bg.png",
+}
+const HORI_EXPRESSION_PATHS: Dictionary[StringName, String] = {
+	&"neutral": "res://assets/phase3/characters/hori/hori_neutral.png",
+	&"happy": "res://assets/phase3/characters/hori/hori_happy.png",
+	&"worried": "res://assets/phase3/characters/hori/hori_worried.png",
+	&"determined": "res://assets/phase3/characters/hori/hori_determined.png",
+}
+const EVENT_SCENE_PRESENTATION: Dictionary[StringName, StringName] = {
+	&"hori_core_protocol_w03": &"laboratory",
+	&"hori_echo_confrontation_w11": &"observatory",
+	&"hori_rupture_investigation_w12": &"laboratory",
+	&"hori_ray_aftermath_w14": &"observatory",
+}
 const STAT_LABELS: Dictionary[StringName, String] = {
 	&"pot": "Potência",
 	&"res": "Resistência",
@@ -17,12 +34,17 @@ var _service: TrainingService
 var _narrative_service: NarrativeService
 var _state: TrainingState
 var _selected_activity: StringName = &""
+var _scene_textures: Dictionary[StringName, Texture2D] = {}
+var _hori_expression_textures: Dictionary[StringName, Texture2D] = {}
+var _background: TextureRect
 var _character_name_label: Label
+var _profile_name_label: Label
 var _week_label: Label
 var _actions_label: Label
 var _semester_progress: ProgressBar
 var _portrait: TextureRect
 var _portrait_placeholder: Control
+var _portrait_placeholder_label: Label
 var _stat_labels: Dictionary[StringName, Label] = {}
 var _stat_bars: Dictionary[StringName, ProgressBar] = {}
 var _resource_bars: Dictionary[StringName, ProgressBar] = {}
@@ -44,6 +66,17 @@ var _narrative_meta: Label
 var _narrative_speaker: Label
 var _narrative_body: Label
 var _narrative_result: Label
+var _dialogue_portrait: TextureRect
+var _dialogue_portrait_placeholder: Control
+var _dialogue_portrait_placeholder_label: Label
+var _dialogue_portrait_name: Label
+var _dialogue_history_toggle: Button
+var _dialogue_history_scroll: ScrollContainer
+var _dialogue_history_content: VBoxContainer
+var _narrative_choice_scroll: ScrollContainer
+var _mission_steps: HBoxContainer
+var _mission_step_labels: Array[Label] = []
+var _mission_requirement_note: Label
 var _narrative_choices: VBoxContainer
 var _narrative_continue: Button
 var _active_event: Dictionary = {}
@@ -51,6 +84,8 @@ var _active_dialogue: Array = []
 var _dialogue_index: int = 0
 var _narrative_mode: StringName = &""
 var _active_mission_stage: Dictionary = {}
+var _active_event_id: StringName = &""
+var _dialogue_history_open: bool = false
 
 
 func _ready() -> void:
@@ -66,6 +101,7 @@ func _ready() -> void:
 			_service.get_bond_cap()
 		)
 		narrative_data_loaded = _narrative_service.load_project_data()
+	_load_phase3_assets()
 	_build_interface()
 	if not project_data_loaded:
 		_feedback_label.text = "Não foi possível carregar os dados de treinamento."
@@ -86,9 +122,58 @@ func set_character_presentation(
 ) -> void:
 	if _character_name_label != null:
 		_character_name_label.text = display_name
+	if _profile_name_label != null:
+		_profile_name_label.text = display_name
 	if _portrait != null:
-		_portrait.texture = portrait_texture
-		_portrait_placeholder.visible = portrait_texture == null
+		var selected_texture: Texture2D = portrait_texture
+		if selected_texture == null and display_name.to_lower() == "hori":
+			selected_texture = _hori_expression_textures.get(&"neutral")
+		_portrait.texture = selected_texture
+		_portrait_placeholder.visible = selected_texture == null
+		_portrait_placeholder_label.text = (
+			"RETRATO NÃO DISPONÍVEL"
+			if selected_texture == null
+			else ""
+		)
+
+
+func _load_phase3_assets() -> void:
+	for scene_id: StringName in SCENE_ASSET_PATHS:
+		var texture: Texture2D = _load_phase3_texture(SCENE_ASSET_PATHS[scene_id])
+		if texture != null:
+			_scene_textures[scene_id] = texture
+	for expression_id: StringName in HORI_EXPRESSION_PATHS:
+		var texture: Texture2D = _load_phase3_texture(
+			HORI_EXPRESSION_PATHS[expression_id]
+		)
+		if texture != null:
+			_hori_expression_textures[expression_id] = texture
+
+
+func _load_phase3_texture(path: String) -> Texture2D:
+	if not FileAccess.file_exists(path):
+		push_warning("Asset visual ausente; placeholder será usado: %s" % path)
+		return null
+	var bytes: PackedByteArray = FileAccess.get_file_as_bytes(path)
+	var image := Image.new()
+	var load_error: Error
+	if bytes.slice(0, 8) == PackedByteArray([137, 80, 78, 71, 13, 10, 26, 10]):
+		load_error = image.load_png_from_buffer(bytes)
+	elif (
+		bytes.slice(0, 4).get_string_from_ascii() == "RIFF"
+		and bytes.slice(8, 12).get_string_from_ascii() == "WEBP"
+	):
+		load_error = image.load_webp_from_buffer(bytes)
+	else:
+		push_error("Formato de imagem não reconhecido: %s" % path)
+		return null
+	if load_error != OK:
+		push_error(
+			"Falha ao decodificar %s: %s"
+			% [path, error_string(load_error)]
+		)
+		return null
+	return ImageTexture.create_from_image(image)
 
 
 func _build_interface() -> void:
@@ -100,6 +185,22 @@ func _build_interface() -> void:
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(background)
+
+	_background = TextureRect.new()
+	_background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_background.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_background.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	_background.texture = _scene_textures.get(&"academy")
+	_background.modulate = Color(1.0, 1.0, 1.0, 0.74)
+	_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_background.visible = _background.texture != null
+	add_child(_background)
+
+	var backdrop_tint := ColorRect.new()
+	backdrop_tint.color = Color(TrainingThemeScript.INK, 0.4)
+	backdrop_tint.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	backdrop_tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(backdrop_tint)
 
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -183,7 +284,12 @@ func _build_character_panel() -> PanelContainer:
 	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	panel.size_flags_stretch_ratio = 0.88
 	panel.custom_minimum_size.x = 270
-	var panel_style := TrainingThemeScript.make_panel_style()
+	var panel_style := TrainingThemeScript.make_panel_style(
+		Color(TrainingThemeScript.PANEL, 0.91),
+		Color(TrainingThemeScript.MINT, 0.48),
+		12,
+		1
+	)
 	panel_style.content_margin_top = 4
 	panel_style.content_margin_bottom = 4
 	panel.add_theme_stylebox_override("panel", panel_style)
@@ -199,6 +305,12 @@ func _build_character_panel() -> PanelContainer:
 	scroll.add_child(content)
 	content.add_child(_make_section_title("CADETE  /  PERFIL"))
 	content.add_child(_build_portrait_slot())
+	_profile_name_label = _make_label("Hori", 16)
+	_profile_name_label.add_theme_color_override("font_color", TrainingThemeScript.CREAM)
+	content.add_child(_profile_name_label)
+	var profile_detail := _make_label("ACADEMIA  ·  TREINAMENTO", 9)
+	profile_detail.add_theme_color_override("font_color", TrainingThemeScript.MINT)
+	content.add_child(profile_detail)
 	content.add_child(_make_section_title("ATRIBUTOS"))
 	content.add_child(_build_stat_grid())
 	content.add_child(_make_section_title("CONDIÇÃO"))
@@ -213,7 +325,7 @@ func _build_character_panel() -> PanelContainer:
 
 func _build_portrait_slot() -> PanelContainer:
 	var slot := PanelContainer.new()
-	slot.custom_minimum_size = Vector2(0, 68)
+	slot.custom_minimum_size = Vector2(0, 178)
 	slot.add_theme_stylebox_override(
 		"panel",
 		TrainingThemeScript.make_panel_style(
@@ -227,6 +339,7 @@ func _build_portrait_slot() -> PanelContainer:
 	_portrait.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_portrait.texture = _hori_expression_textures.get(&"neutral")
 	_portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	slot.add_child(_portrait)
 
@@ -239,6 +352,8 @@ func _build_portrait_slot() -> PanelContainer:
 	placeholder_text.add_theme_color_override("font_color", TrainingThemeScript.MINT)
 	placeholder.add_child(placeholder_text)
 	_portrait_placeholder = placeholder
+	_portrait_placeholder_label = placeholder_text
+	_portrait_placeholder.visible = _portrait.texture == null
 	return slot
 
 
@@ -386,6 +501,15 @@ func _build_activity_panel() -> PanelContainer:
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	panel.size_flags_stretch_ratio = 1.45
+	panel.add_theme_stylebox_override(
+		"panel",
+		TrainingThemeScript.make_panel_style(
+			Color(TrainingThemeScript.PANEL, 0.91),
+			Color(TrainingThemeScript.MINT, 0.48),
+			12,
+			1
+		)
+	)
 	var content := VBoxContainer.new()
 	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	content.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -486,7 +610,7 @@ func _build_preview_dock() -> PanelContainer:
 	panel.add_theme_stylebox_override(
 		"panel",
 		TrainingThemeScript.make_panel_style(
-			Color(TrainingThemeScript.PANEL, 0.98),
+			Color(TrainingThemeScript.PANEL, 0.93),
 			Color(TrainingThemeScript.MINT, 0.62),
 			12,
 			1
@@ -564,7 +688,7 @@ func _build_narrative_overlay() -> void:
 	_narrative_overlay.add_child(center)
 
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(640, 430)
+	panel.custom_minimum_size = Vector2(740, 520)
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	panel.add_theme_stylebox_override(
@@ -585,15 +709,93 @@ func _build_narrative_overlay() -> void:
 	margin.add_theme_constant_override("margin_bottom", 16)
 	panel.add_child(margin)
 
+	var columns := HBoxContainer.new()
+	columns.add_theme_constant_override("separation", 14)
+	margin.add_child(columns)
+
+	var portrait_panel := PanelContainer.new()
+	portrait_panel.custom_minimum_size.x = 142
+	portrait_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	portrait_panel.add_theme_stylebox_override(
+		"panel",
+		TrainingThemeScript.make_panel_style(
+			Color(TrainingThemeScript.PETROL, 0.26),
+			Color(TrainingThemeScript.MINT, 0.4),
+			10,
+			1
+		)
+	)
+	columns.add_child(portrait_panel)
+	var portrait_column := VBoxContainer.new()
+	portrait_column.add_theme_constant_override("separation", 8)
+	portrait_panel.add_child(portrait_column)
+	_dialogue_portrait = TextureRect.new()
+	_dialogue_portrait.custom_minimum_size = Vector2(124, 270)
+	_dialogue_portrait.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_dialogue_portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_dialogue_portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_dialogue_portrait.texture = _hori_expression_textures.get(&"neutral")
+	_dialogue_portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	portrait_column.add_child(_dialogue_portrait)
+	var portrait_placeholder := CenterContainer.new()
+	portrait_placeholder.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	portrait_placeholder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	portrait_panel.add_child(portrait_placeholder)
+	_dialogue_portrait_placeholder_label = _make_label(
+		"RETRATO PENDENTE",
+		10
+	)
+	_dialogue_portrait_placeholder_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_dialogue_portrait_placeholder_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_dialogue_portrait_placeholder_label.add_theme_color_override(
+		"font_color",
+		TrainingThemeScript.MINT
+	)
+	portrait_placeholder.add_child(_dialogue_portrait_placeholder_label)
+	_dialogue_portrait_placeholder = portrait_placeholder
+	_dialogue_portrait_placeholder.visible = _dialogue_portrait.texture == null
+	_dialogue_portrait_name = _make_label("HORI", 12)
+	_dialogue_portrait_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_dialogue_portrait_name.add_theme_color_override("font_color", TrainingThemeScript.GOLD)
+	portrait_column.add_child(_dialogue_portrait_name)
+
 	var content := VBoxContainer.new()
-	content.add_theme_constant_override("separation", 9)
-	margin.add_child(content)
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	content.add_theme_constant_override("separation", 7)
+	columns.add_child(content)
 	_narrative_meta = _make_label("", 10)
 	_narrative_meta.add_theme_color_override("font_color", TrainingThemeScript.MINT)
 	content.add_child(_narrative_meta)
 	_narrative_title = _make_label("", 22)
 	_narrative_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	content.add_child(_narrative_title)
+	_mission_steps = HBoxContainer.new()
+	_mission_steps.add_theme_constant_override("separation", 5)
+	_mission_steps.visible = false
+	for step_number: int in range(1, 4):
+		var step_card := PanelContainer.new()
+		step_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		step_card.add_theme_stylebox_override(
+			"panel",
+			TrainingThemeScript.make_panel_style(
+				TrainingThemeScript.PANEL_MUTED,
+				TrainingThemeScript.LINE,
+				7,
+				1
+			)
+		)
+		var step_label := _make_label("ETAPA %d" % step_number, 9)
+		step_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		step_card.add_child(step_label)
+		_mission_steps.add_child(step_card)
+		_mission_step_labels.append(step_label)
+	content.add_child(_mission_steps)
+	_mission_requirement_note = _make_label("", 10)
+	_mission_requirement_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_mission_requirement_note.add_theme_color_override("font_color", TrainingThemeScript.GOLD)
+	_mission_requirement_note.visible = false
+	content.add_child(_mission_requirement_note)
 	_narrative_speaker = _make_label("", 12)
 	_narrative_speaker.add_theme_color_override("font_color", TrainingThemeScript.GOLD)
 	content.add_child(_narrative_speaker)
@@ -602,20 +804,37 @@ func _build_narrative_overlay() -> void:
 	_narrative_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_narrative_body.custom_minimum_size.y = 96
 	content.add_child(_narrative_body)
+	_dialogue_history_toggle = Button.new()
+	_dialogue_history_toggle.custom_minimum_size.y = 30
+	_dialogue_history_toggle.text = "Histórico da cena"
+	_dialogue_history_toggle.visible = false
+	_dialogue_history_toggle.pressed.connect(_on_dialogue_history_toggled)
+	content.add_child(_dialogue_history_toggle)
+	_dialogue_history_scroll = ScrollContainer.new()
+	_dialogue_history_scroll.custom_minimum_size.y = 94
+	_dialogue_history_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_dialogue_history_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_dialogue_history_scroll.visible = false
+	content.add_child(_dialogue_history_scroll)
+	_dialogue_history_content = VBoxContainer.new()
+	_dialogue_history_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_dialogue_history_content.add_theme_constant_override("separation", 4)
+	_dialogue_history_scroll.add_child(_dialogue_history_content)
 	_narrative_result = _make_label("", 11)
 	_narrative_result.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_narrative_result.add_theme_color_override("font_color", TrainingThemeScript.CORAL)
 	content.add_child(_narrative_result)
-	var choice_scroll := ScrollContainer.new()
-	choice_scroll.custom_minimum_size.y = 110
-	choice_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	choice_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	choice_scroll.follow_focus = true
-	content.add_child(choice_scroll)
+	_narrative_choice_scroll = ScrollContainer.new()
+	_narrative_choice_scroll.custom_minimum_size.y = 110
+	_narrative_choice_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_narrative_choice_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_narrative_choice_scroll.follow_focus = true
+	_narrative_choice_scroll.visible = false
+	content.add_child(_narrative_choice_scroll)
 	_narrative_choices = VBoxContainer.new()
 	_narrative_choices.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_narrative_choices.add_theme_constant_override("separation", 6)
-	choice_scroll.add_child(_narrative_choices)
+	_narrative_choice_scroll.add_child(_narrative_choices)
 	_narrative_continue = Button.new()
 	_narrative_continue.text = "Continuar"
 	_narrative_continue.custom_minimum_size.y = 38
@@ -649,6 +868,132 @@ func _make_label(text: String, font_size: int) -> Label:
 	return label
 
 
+func _set_scene_context(scene_id: StringName) -> void:
+	if _background == null:
+		return
+	var texture: Texture2D = _scene_textures.get(
+		scene_id,
+		_scene_textures.get(&"academy")
+	)
+	_background.texture = texture
+	_background.visible = texture != null
+
+
+func _set_scene_for_activity(activity_id: StringName) -> void:
+	match activity_id:
+		&"lab", &"control":
+			_set_scene_context(&"laboratory")
+		&"bond_ray", &"bond_luppi":
+			_set_scene_context(&"observatory")
+		_:
+			_set_scene_context(&"academy")
+
+
+func _set_scene_for_event(event_id: StringName) -> void:
+	_set_scene_context(
+		EVENT_SCENE_PRESENTATION.get(event_id, &"academy")
+	)
+
+
+func _set_dialogue_portrait(speaker_id: String, expression_id: StringName) -> void:
+	var is_hori: bool = speaker_id == "hori"
+	var texture: Texture2D = null
+	if is_hori:
+		texture = _hori_expression_textures.get(expression_id)
+		if texture == null:
+			texture = _hori_expression_textures.get(&"neutral")
+	_dialogue_portrait.texture = texture
+	_dialogue_portrait_placeholder.visible = texture == null
+	_dialogue_portrait_placeholder_label.text = (
+		"RETRATO PENDENTE\n%s" % _display_speaker(speaker_id)
+		if not is_hori
+		else "RETRATO DA HORI PENDENTE"
+	)
+	_dialogue_portrait_name.text = _display_speaker(speaker_id)
+
+
+func _hori_expression_for_line(event_id: StringName, line_index: int) -> StringName:
+	match event_id:
+		&"hori_face_clues_w02":
+			return &"happy" if line_index == 0 else &"neutral"
+		&"hori_core_protocol_w03":
+			return &"worried"
+		&"hori_echo_confrontation_w11":
+			return &"worried" if line_index < 2 else &"determined"
+		&"hori_rupture_investigation_w12":
+			return &"determined"
+		_:
+			return &"neutral"
+
+
+func _clear_dialogue_history() -> void:
+	for child: Node in _dialogue_history_content.get_children():
+		_dialogue_history_content.remove_child(child)
+		child.queue_free()
+	_dialogue_history_open = false
+	_dialogue_history_scroll.visible = false
+	_dialogue_history_toggle.text = "Ver histórico da cena (0 falas)"
+
+
+func _append_dialogue_history(speaker_id: String, line_text: String) -> void:
+	var entry := _make_label(
+		"%s  ·  %s" % [_display_speaker(speaker_id), line_text],
+		11
+	)
+	entry.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	entry.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_dialogue_history_content.add_child(entry)
+	var count: int = _dialogue_history_content.get_child_count()
+	_dialogue_history_toggle.text = (
+		"Ocultar histórico (%d falas)"
+		if _dialogue_history_open
+		else "Ver histórico da cena (%d falas)"
+	) % count
+	_dialogue_history_scroll.visible = _dialogue_history_open
+	if _dialogue_history_open:
+		_dialogue_history_scroll.scroll_vertical = (
+			int(_dialogue_history_scroll.get_v_scroll_bar().max_value)
+		)
+
+
+func _on_dialogue_history_toggled() -> void:
+	_dialogue_history_open = not _dialogue_history_open
+	var count: int = _dialogue_history_content.get_child_count()
+	_dialogue_history_toggle.text = (
+		"Ocultar histórico (%d falas)"
+		if _dialogue_history_open
+		else "Ver histórico da cena (%d falas)"
+	) % count
+	_dialogue_history_scroll.visible = _dialogue_history_open
+	if _dialogue_history_open:
+		_dialogue_history_scroll.scroll_vertical = (
+			int(_dialogue_history_scroll.get_v_scroll_bar().max_value)
+		)
+
+
+func _update_mission_progress(completed_count: int) -> void:
+	for index: int in range(_mission_step_labels.size()):
+		var number: int = index + 1
+		if index < completed_count:
+			_mission_step_labels[index].text = "ETAPA %d  ·  CONCLUÍDA" % number
+			_mission_step_labels[index].add_theme_color_override(
+				"font_color",
+				TrainingThemeScript.MINT
+			)
+		elif index == completed_count:
+			_mission_step_labels[index].text = "ETAPA %d  ·  ATUAL" % number
+			_mission_step_labels[index].add_theme_color_override(
+				"font_color",
+				TrainingThemeScript.GOLD
+			)
+		else:
+			_mission_step_labels[index].text = "ETAPA %d" % number
+			_mission_step_labels[index].add_theme_color_override(
+				"font_color",
+				TrainingThemeScript.CREAM
+			)
+
+
 func _process_narrative_flow() -> void:
 	if _state == null or _narrative_overlay == null or _narrative_overlay.visible:
 		return
@@ -669,10 +1014,17 @@ func _process_narrative_flow() -> void:
 
 func _open_narrative_event(event: Dictionary) -> void:
 	_active_event = event
+	_active_event_id = StringName(event["id"])
 	_active_dialogue = event["dialogue"]
 	_dialogue_index = 0
 	_narrative_body.custom_minimum_size.y = 96
 	_narrative_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_mission_steps.visible = false
+	_mission_requirement_note.visible = false
+	_dialogue_history_toggle.visible = true
+	_narrative_choice_scroll.visible = false
+	_clear_dialogue_history()
+	_set_scene_for_event(_active_event_id)
 	_narrative_mode = &"event_dialogue"
 	_narrative_title.text = String(event["title"])
 	_narrative_meta.text = (
@@ -691,8 +1043,16 @@ func _show_event_dialogue_line() -> void:
 	if _dialogue_index < 0 or _dialogue_index >= _active_dialogue.size():
 		return
 	var line: Dictionary = _active_dialogue[_dialogue_index]
-	_narrative_speaker.text = _display_speaker(String(line["speaker"]))
-	_narrative_body.text = String(line["text"])
+	var speaker_id: String = String(line["speaker"])
+	var line_text: String = String(line["text"])
+	_narrative_speaker.text = _display_speaker(speaker_id)
+	_narrative_body.text = line_text
+	var expression_id: StringName = _hori_expression_for_line(
+		_active_event_id,
+		_dialogue_index
+	)
+	_set_dialogue_portrait(speaker_id, expression_id)
+	_append_dialogue_history(speaker_id, line_text)
 	_narrative_continue.text = (
 		"Continuar fala"
 		if _dialogue_index < _active_dialogue.size() - 1
@@ -707,6 +1067,11 @@ func _show_event_choices() -> void:
 	_narrative_speaker.text = ""
 	_narrative_body.text = "Escolha como responder. A decisão não consome um bloco de treinamento."
 	_narrative_result.text = ""
+	_mission_steps.visible = false
+	_mission_requirement_note.visible = false
+	_dialogue_history_toggle.visible = true
+	_narrative_choice_scroll.visible = true
+	_set_dialogue_portrait("hori", &"happy")
 	_narrative_continue.visible = false
 	_clear_narrative_choices()
 	for choice: Dictionary in _active_event["choices"]:
@@ -723,6 +1088,23 @@ func _open_mission_stage() -> void:
 	_narrative_mode = &"mission_choices"
 	_narrative_body.custom_minimum_size.y = 0
 	_narrative_body.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	_set_scene_context(&"observatory")
+	_set_dialogue_portrait("hori", &"determined")
+	_narrative_speaker.text = "HORI"
+	_mission_steps.visible = true
+	_update_mission_progress(int(_active_mission_stage["stage"]) - 1)
+	_mission_requirement_note.visible = int(_active_mission_stage["stage"]) == 2
+	if _mission_requirement_note.visible:
+		_mission_requirement_note.text = (
+			"PULSO DE CONTENÇÃO  ·  sucesso se estabilidade ≥ %d e Técnica ≥ %d; "
+			+ "caso contrário, falha recuperável."
+		) % [
+			NarrativeService.PULSE_MIN_CORE_STABILITY,
+			NarrativeService.PULSE_MIN_TECHNIQUE,
+		]
+	_dialogue_history_toggle.visible = false
+	_dialogue_history_scroll.visible = false
+	_narrative_choice_scroll.visible = true
 	_narrative_title.text = String(_narrative_service.get_mission_title())
 	_narrative_meta.text = (
 		"MISSÃO  ·  ETAPA %d DE 3  ·  SEMANA %02d"
@@ -759,7 +1141,17 @@ func _show_campaign_ending() -> void:
 		_feedback_label.text = "A campanha terminou, mas nenhum final elegível foi encontrado."
 		return
 	_state.ending_id = StringName(ending["id"])
+	_set_scene_context(&"observatory")
+	_set_dialogue_portrait("hori", &"neutral")
+	_narrative_body.custom_minimum_size.y = 96
+	_narrative_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_narrative_mode = &"ending"
+	_mission_steps.visible = true
+	_update_mission_progress(3)
+	_mission_requirement_note.visible = false
+	_dialogue_history_toggle.visible = false
+	_dialogue_history_scroll.visible = false
+	_narrative_choice_scroll.visible = false
 	_narrative_title.text = String(ending["title"])
 	_narrative_meta.text = "FIM DO SEMESTRE  ·  FINAL %s" % String(ending["tag"]).to_upper()
 	_narrative_speaker.text = "EPÍLOGO"
@@ -808,6 +1200,7 @@ func _clear_narrative_choices() -> void:
 func _on_narrative_choice_pressed(choice_id: StringName) -> void:
 	if _state == null:
 		return
+	var was_mission_choice: bool = _narrative_mode == &"mission_choices"
 	var state_before: TrainingState = _state.duplicate_state()
 	var result: NarrativeResult
 	if _narrative_mode == &"event_choices":
@@ -830,6 +1223,20 @@ func _on_narrative_choice_pressed(choice_id: StringName) -> void:
 	)
 	_narrative_speaker.text = "RESULTADO"
 	_narrative_body.text = result.message
+	_narrative_choice_scroll.visible = false
+	if was_mission_choice:
+		_set_scene_context(&"observatory")
+		_set_dialogue_portrait(
+			"hori",
+			&"worried"
+			if result.outcome == &"failure_recoverable"
+			else &"determined"
+		)
+		_update_mission_progress(result.stage_number)
+		_mission_steps.visible = true
+		_mission_requirement_note.visible = result.stage_number == 2
+	else:
+		_dialogue_history_toggle.visible = true
 	var changes: PackedStringArray = _format_narrative_changes(state_before, _state)
 	_narrative_result.text = (
 		"\n".join(changes)
@@ -858,7 +1265,9 @@ func _on_narrative_continue_pressed() -> void:
 			_narrative_overlay.visible = false
 			_narrative_mode = &""
 			_active_event.clear()
+			_active_event_id = &""
 			_active_dialogue.clear()
+			_set_scene_context(&"academy")
 			_refresh_state()
 			_process_narrative_flow()
 		&"mission_result":
@@ -868,11 +1277,13 @@ func _on_narrative_continue_pressed() -> void:
 				_narrative_overlay.visible = false
 				_narrative_mode = &""
 				_active_mission_stage.clear()
+				_set_scene_context(&"academy")
 				_refresh_state()
 				_process_narrative_flow()
 		&"ending":
 			_narrative_overlay.visible = false
 			_narrative_mode = &""
+			_set_scene_context(&"academy")
 
 
 func _format_narrative_changes(
@@ -964,6 +1375,7 @@ func _on_activity_selected(activity_id: StringName) -> void:
 	if _state == null or _state.actions_remaining <= 0:
 		return
 	_selected_activity = activity_id
+	_set_scene_for_activity(activity_id)
 	_update_activity_buttons()
 	_cancel_button.disabled = false
 	var preview: TrainingPreview = _service.preview_activity(_state, activity_id)
@@ -1063,6 +1475,7 @@ func _on_confirm_pressed() -> void:
 
 func _on_cancel_pressed() -> void:
 	_selected_activity = &""
+	_set_scene_context(&"academy")
 	_preview_title.text = "PRÉVIA DO PLANO"
 	_preview_status.text = "Escolha uma atividade para ver seus efeitos."
 	_preview_status.add_theme_color_override(
@@ -1082,6 +1495,7 @@ func _on_advance_week_pressed() -> void:
 	if _state == null or not _service.advance_week(_state):
 		return
 	_selected_activity = &""
+	_set_scene_context(&"academy")
 	_preview_title.text = "NOVA SEMANA"
 	_preview_status.text = "Semana %d iniciada." % _state.week
 	_preview_body.text = "Escolha uma atividade para planejar o próximo bloco."
