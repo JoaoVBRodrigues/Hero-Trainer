@@ -49,8 +49,8 @@ enum HoriPresentation { RIGHT_SIDE, CENTER_STAGE, STATUS_SIDE }
 
 var _service: TrainingService
 var _narrative_service: NarrativeService
-var _economy_service: EconomyService
-var _save_service: CampaignSaveService
+var _economy_service: EconomyServiceScript
+var _save_service: CampaignSaveServiceScript
 var _state: TrainingState
 var _startup_save_dialog: AcceptDialog
 var _startup_saved_state: TrainingState

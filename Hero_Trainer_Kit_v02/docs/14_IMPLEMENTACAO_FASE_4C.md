@@ -1,6 +1,6 @@
 # HERO TRAINER — Registro de Implementação — Fase 4C
 
-**Status:** implementação integrada em código; revisão estática realizada. Godot, testes, runner, simulações, builds e benchmarks não foram executados. O comportamento em runtime permanece sem validação.
+**Status:** implementação integrada e Save/Load validado funcionalmente no Godot 4.5.1. Os testes focados de persistência passaram; a suíte de apresentação do dashboard ainda tem duas falhas registradas na seção 3. Não foram executados runner, simulações, builds ou benchmarks.
 
 Este registro acompanha as baselines aprovadas em [11 — Especificação de Game Design da Fase 4C](./11_ESPECIFICACAO_GAME_DESIGN_FASE_4C.md), [12 — Decisões da Fase 4C.1](./12_DECISOES_GAME_DESIGN_FASE_4C1.md) e [13 — Especificação de Game Design da Fase 4C.2](./13_ESPECIFICACAO_GAME_DESIGN_FASE_4C2.md). Essas baselines continuam sendo a fonte das regras e decisões de design; este documento registra como elas foram traduzidas para o código e os limites de verificação.
 
@@ -38,7 +38,9 @@ Compra valida créditos e duplicidade. Troca de equipamento exige que ainda não
 
 [`scripts/campaign_save_service.gd`](../../scripts/campaign_save_service.gd) adiciona um envelope versionado, snapshot de campanha validado pelos serviços, save principal, backup e arquivo temporário. A inicialização do dashboard oferece retomada, recuperação de backup ou início de nova campanha; dados corrompidos ou incompatíveis são preservados antes da substituição, conforme o fluxo implementado.
 
-A gravação verifica o temporário e o arquivo principal após a cópia. **A substituição do arquivo principal é feita por cópia, não por uma operação atômica**; portanto, o código não garante imunidade a interrupção do sistema durante a gravação. Essa limitação não foi reproduzida nem avaliada em runtime.
+A gravação valida o estado e o temporário antes de tocar no principal. Quando existe um principal válido, cria e valida o backup antes da substituição; se a gravação ou validação do novo principal falha, tenta restaurar e validar o backup. A operação continua baseada em cópias, não em substituição atômica; interrupção física do sistema durante a escrita e falhas forçadas de I/O não foram simuladas.
+
+Durante a inicialização do editor foi reproduzida uma falha de resolução dos tipos globais `EconomyService` e `CampaignSaveService` no dashboard. O caminho de Save/Load agora usa aliases de scripts carregados por `preload` para esses tipos e para as dependências relacionadas (`TrainingState` e `NarrativeService`), evitando depender da resolução global intermitente nesse fluxo.
 
 ### Missão, prazo e finais
 
@@ -74,7 +76,7 @@ O avanço que expira o prazo requer confirmação explícita. O aviso do Pulso a
 
 - [`test_training_service.gd`](../../tests/test_training_service.gd)
 - [`test_narrative_campaign.gd`](../../tests/test_narrative_campaign.gd)
-- [`test_campaign_economy_save.gd`](../../tests/test_campaign_economy_save.gd) — novo; cobre economia, validações e round-trip estrutural sem gravar arquivos.
+- [`test_campaign_economy_save.gd`](../../tests/test_campaign_economy_save.gd) — cobre economia, round-trip e recuperação por arquivos reais em diretórios temporários isolados.
 - [`test_dashboard_presentation.gd`](../../tests/test_dashboard_presentation.gd) — os casos de dashboard desativam a persistência para evitar acesso a `user://` durante os testes.
 
 ### Documentação de baseline atualizada
@@ -83,16 +85,17 @@ O avanço que expira o prazo requer confirmação explícita. O aviso do Pulso a
 - [12 — Decisões da Fase 4C.1](./12_DECISOES_GAME_DESIGN_FASE_4C1.md)
 - [13 — Especificação de Game Design da Fase 4C.2](./13_ESPECIFICACAO_GAME_DESIGN_FASE_4C2.md)
 
-Os testes foram preparados/atualizados, mas **não foram executados**. Isso não comprova compilação, carregamento de recursos, funcionamento de diálogos ou comportamento em runtime.
-
 ## 3. Verificações e limitações
 
 - A revisão estática conferiu as fórmulas, validações de estado, transações por candidato, condições de prazo e os campos de inventário/equipamento no snapshot.
-- A inicialização do dashboard em testes com persistência desativada não deve acessar o save. Instâncias de script criadas diretamente nos testes inicializam o serviço de economia ao construir a interface; a disponibilidade do estado narrativo é verificada antes do uso nessa atualização da tela do Hub.
-- Não há resultado de teste, benchmark, simulação ou execução do Godot a registrar.
-- Permanecem pendentes a validação de sintaxe e tipos pelo Godot, a execução dos testes focados e a validação manual do fluxo visual, todos sujeitos a autorização específica do autor.
-- Qualquer discrepância observada somente em runtime deve ser tratada como hipótese até que uma execução localizada, autorizada e segura a confirme.
+- A suíte `Campaign Economy and Save` passou: 4/4 testes, incluindo gravação/leitura real em arquivos temporários, preservação do principal contra estado inválido, recuperação por backup, ausência de ambos os arquivos e preservação de JSON inválido.
+- No jogo, foi confirmado o início sem save: a campanha começou na semana 1 e criou JSON válido com 3 ações. O arquivo gerado para esse cenário foi arquivado fora do caminho ativo.
+- O fluxo real de progresso e retomada foi executado em duas reinicializações. Após atividade, descanso, avanço semanal e escolha narrativa, o save foi carregado com semana 3, 3 ações, 45 créditos, energia 100, estresse 0, motivação 89, reputação 23, vínculo do instrutor 34, estabilidade do núcleo 69, flags narrativas, inventário/equipamento `training_notebook` e estado do RNG persistidos. Foi possível continuar a campanha e salvar novamente.
+- Após os testes, o save pessoal anterior foi restaurado a partir da cópia preventiva. A retomada no jogo confirmou semana 2, 3 ações, 20 créditos, energia 84, estresse 10, motivação 73, reputação 22, vínculos Ray 30/Luppi 25/instrutor 30 e `training_notebook` no inventário e equipado. Os hashes SHA-256 do principal e do backup permaneceram idênticos aos originais restaurados.
+- A suíte `Dashboard Character Presentation` passou em 6/8 testes. `test_campaign_launch_shows_hub_before_narrative` falhou ao acessar `_hub_ui` nulo no harness de teste; `test_training_screen_previews_and_applies_service_results` falhou porque o estado RNG não avançou na atividade esperada. A causa dessas falhas não foi estabelecida e elas não foram alteradas como parte da correção de persistência. A inicialização e a retomada foram verificadas separadamente no jogo real.
+- Não foi injetada uma falha de escrita para testar o rollback físico nem foi interrompida a gravação durante uma substituição. A garantia do rollback está coberta por inspeção do fluxo, não por uma falha real de I/O.
+- Nenhuma simulação longa, benchmark ou bateria de testes não relacionada foi executada. A validação de Save/Load em runtime não elimina as limitações de atomicidade de cópia nem as duas falhas da suíte de apresentação acima.
 
-## 4. Próxima validação autorizável
+## 4. Próximas validações
 
-Quando o autor considerar seguro, validar primeiro os testes focados de serviço, narrativa, save/economia e dashboard, em sessões pequenas e sem simulação de campanha. Até essa autorização, este registro descreve apenas o código inspecionado estaticamente.
+Investigar separadamente as duas falhas da suíte de apresentação. Em uma futura alteração do mecanismo de escrita, acrescentar uma forma controlada de exercitar rollback por falha de I/O sem tocar nos saves pessoais.

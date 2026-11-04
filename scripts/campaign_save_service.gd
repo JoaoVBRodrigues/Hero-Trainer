@@ -1,6 +1,11 @@
 class_name CampaignSaveService
 extends RefCounted
 
+const TrainingServiceScript = preload("res://scripts/training_service.gd")
+const NarrativeServiceScript = preload("res://scripts/narrative_service.gd")
+const EconomyServiceScript = preload("res://scripts/economy_service.gd")
+const TrainingStateScript = preload("res://scripts/training_state.gd")
+
 const SAVE_PATH: String = "user://hero_trainer_save.json"
 const BACKUP_PATH: String = "user://hero_trainer_save.json.bak"
 const TEMP_PATH: String = "user://hero_trainer_save.json.tmp"
@@ -21,12 +26,28 @@ const BOND_KEYS: Array[String] = ["ray", "luppi", "instructor"]
 
 
 func inspect_save(
-	training_service: TrainingService,
-	narrative_service: NarrativeService,
-	economy_service: EconomyService
+	training_service: TrainingServiceScript,
+	narrative_service: NarrativeServiceScript,
+	economy_service: EconomyServiceScript
+) -> Dictionary:
+	return _inspect_save_at(
+		SAVE_PATH,
+		BACKUP_PATH,
+		training_service,
+		narrative_service,
+		economy_service
+	)
+
+
+func _inspect_save_at(
+	primary_path: String,
+	backup_path: String,
+	training_service: TrainingServiceScript,
+	narrative_service: NarrativeServiceScript,
+	economy_service: EconomyServiceScript
 ) -> Dictionary:
 	var primary: Dictionary = _read_save(
-		SAVE_PATH,
+		primary_path,
 		training_service,
 		narrative_service,
 		economy_service
@@ -37,7 +58,7 @@ func inspect_save(
 		return primary
 
 	var backup: Dictionary = _read_save(
-		BACKUP_PATH,
+		backup_path,
 		training_service,
 		narrative_service,
 		economy_service
@@ -97,10 +118,30 @@ func archive_primary_save() -> String:
 
 
 func save(
-	state: TrainingState,
-	training_service: TrainingService,
-	narrative_service: NarrativeService,
-	economy_service: EconomyService
+	state: TrainingStateScript,
+	training_service: TrainingServiceScript,
+	narrative_service: NarrativeServiceScript,
+	economy_service: EconomyServiceScript
+) -> String:
+	return _save_to_paths(
+		state,
+		training_service,
+		narrative_service,
+		economy_service,
+		SAVE_PATH,
+		BACKUP_PATH,
+		TEMP_PATH
+	)
+
+
+func _save_to_paths(
+	state: TrainingStateScript,
+	training_service: TrainingServiceScript,
+	narrative_service: NarrativeServiceScript,
+	economy_service: EconomyServiceScript,
+	primary_path: String,
+	backup_path: String,
+	temp_path: String
 ) -> String:
 	var engine_version: String = _current_engine_version()
 	if not SUPPORTED_ENGINE_VERSIONS.has(engine_version):
@@ -115,11 +156,11 @@ func save(
 		return "Save recusado: %s" % validation_error
 
 	var save_data: Dictionary = _encode_save(state, engine_version)
-	var write_error: String = _write_temp_save(save_data)
+	var write_error: String = _write_temp_save(save_data, temp_path)
 	if not write_error.is_empty():
 		return write_error
 	var temp_result: Dictionary = _read_save(
-		TEMP_PATH,
+		temp_path,
 		training_service,
 		narrative_service,
 		economy_service
@@ -128,9 +169,9 @@ func save(
 		return "O arquivo temporário não passou na validação: %s" % temp_result["message"]
 
 	var had_valid_primary: bool = false
-	if FileAccess.file_exists(SAVE_PATH):
+	if FileAccess.file_exists(primary_path):
 		var existing: Dictionary = _read_save(
-			SAVE_PATH,
+			primary_path,
 			training_service,
 			narrative_service,
 			economy_service
@@ -141,44 +182,77 @@ func save(
 				+ "nenhum dado será sobrescrito. %s"
 			) % String(existing["message"])
 		var backup_error: Error = DirAccess.copy_absolute(
-			ProjectSettings.globalize_path(SAVE_PATH),
-			ProjectSettings.globalize_path(BACKUP_PATH)
+			ProjectSettings.globalize_path(primary_path),
+			ProjectSettings.globalize_path(backup_path)
 		)
 		if backup_error != OK:
 			return "Não foi possível atualizar o backup do save: %s." % error_string(backup_error)
+		var verified_backup: Dictionary = _read_save(
+			backup_path,
+			training_service,
+			narrative_service,
+			economy_service
+		)
+		if verified_backup["status"] != "valid":
+			return (
+				"O backup recém-gravado falhou na verificação: %s. "
+				+ "O save principal original foi preservado."
+			) % String(verified_backup["message"])
 		had_valid_primary = true
 
 	var replace_error: Error = DirAccess.copy_absolute(
-		ProjectSettings.globalize_path(TEMP_PATH),
-		ProjectSettings.globalize_path(SAVE_PATH)
+		ProjectSettings.globalize_path(temp_path),
+		ProjectSettings.globalize_path(primary_path)
 	)
-	if replace_error != OK:
+	if replace_error != OK and not had_valid_primary:
 		return "Não foi possível gravar o save principal: %s." % error_string(replace_error)
 	var verified_primary: Dictionary = _read_save(
-		SAVE_PATH,
+		primary_path,
 		training_service,
 		narrative_service,
 		economy_service
 	)
-	if verified_primary["status"] != "valid":
+	if replace_error != OK or verified_primary["status"] != "valid":
 		var recovery_message: String = ""
 		if had_valid_primary:
 			var restore_error: Error = DirAccess.copy_absolute(
-				ProjectSettings.globalize_path(BACKUP_PATH),
-				ProjectSettings.globalize_path(SAVE_PATH)
+				ProjectSettings.globalize_path(backup_path),
+				ProjectSettings.globalize_path(primary_path)
 			)
+			var restored_primary: Dictionary = {}
+			if restore_error == OK:
+				restored_primary = _read_save(
+					primary_path,
+					training_service,
+					narrative_service,
+					economy_service
+				)
+				if restored_primary["status"] != "valid":
+					restore_error = ERR_FILE_CORRUPT
 			recovery_message = (
 				" O save anterior foi restaurado do backup."
 				if restore_error == OK
 				else " Falha ao restaurar o backup: %s." % error_string(restore_error)
 			)
+		elif FileAccess.file_exists(primary_path):
+			var preserve_error: Error = DirAccess.copy_absolute(
+				ProjectSettings.globalize_path(primary_path),
+				ProjectSettings.globalize_path(temp_path)
+			)
+			if preserve_error == OK:
+				DirAccess.remove_absolute(ProjectSettings.globalize_path(primary_path))
 		return (
-			"O save recém-gravado falhou na verificação: %s.%s"
-			% [String(verified_primary["message"]), recovery_message]
+			"O save recém-gravado falhou na gravação/verificação: %s.%s"
+			% [
+				error_string(replace_error)
+				if replace_error != OK
+				else String(verified_primary["message"]),
+				recovery_message,
+			]
 		)
 
 	var cleanup_error: Error = DirAccess.remove_absolute(
-		ProjectSettings.globalize_path(TEMP_PATH)
+		ProjectSettings.globalize_path(temp_path)
 	)
 	if cleanup_error != OK and cleanup_error != ERR_FILE_NOT_FOUND:
 		push_warning(
@@ -189,10 +263,10 @@ func save(
 
 
 func _validate_campaign(
-	state: TrainingState,
-	training_service: TrainingService,
-	narrative_service: NarrativeService,
-	economy_service: EconomyService
+	state: TrainingStateScript,
+	training_service: TrainingServiceScript,
+	narrative_service: NarrativeServiceScript,
+	economy_service: EconomyServiceScript
 ) -> String:
 	var training_error: String = training_service.validate_state(state)
 	if not training_error.is_empty():
@@ -210,7 +284,7 @@ func _validate_campaign(
 	return economy_service.validate_state(state)
 
 
-func _encode_save(state: TrainingState, engine_version: String) -> Dictionary:
+func _encode_save(state: TrainingStateScript, engine_version: String) -> Dictionary:
 	return {
 		"save_schema_version": SAVE_SCHEMA_VERSION,
 		"campaign_id": CAMPAIGN_ID,
@@ -239,8 +313,8 @@ func _encode_save(state: TrainingState, engine_version: String) -> Dictionary:
 	}
 
 
-func _write_temp_save(save_data: Dictionary) -> String:
-	var file: FileAccess = FileAccess.open(TEMP_PATH, FileAccess.WRITE)
+func _write_temp_save(save_data: Dictionary, temp_path: String) -> String:
+	var file: FileAccess = FileAccess.open(temp_path, FileAccess.WRITE)
 	if file == null:
 		return "Não foi possível abrir o temporário do save: %s." % error_string(
 			FileAccess.get_open_error()
@@ -256,9 +330,9 @@ func _write_temp_save(save_data: Dictionary) -> String:
 
 func _read_save(
 	path: String,
-	training_service: TrainingService,
-	narrative_service: NarrativeService,
-	economy_service: EconomyService
+	training_service: TrainingServiceScript,
+	narrative_service: NarrativeServiceScript,
+	economy_service: EconomyServiceScript
 ) -> Dictionary:
 	if not FileAccess.file_exists(path):
 		return {
@@ -297,9 +371,9 @@ func _read_save(
 
 func _decode_save(
 	value: Variant,
-	training_service: TrainingService,
-	narrative_service: NarrativeService,
-	economy_service: EconomyService
+	training_service: TrainingServiceScript,
+	narrative_service: NarrativeServiceScript,
+	economy_service: EconomyServiceScript
 ) -> Dictionary:
 	if typeof(value) != TYPE_DICTIONARY:
 		return _corrupt_result("A raiz do save precisa ser um objeto.")
@@ -332,7 +406,7 @@ func _decode_save(
 	var decoded_state: Dictionary = _decode_snapshot(data["snapshot"])
 	if not bool(decoded_state["valid"]):
 		return _corrupt_result(String(decoded_state["message"]))
-	var state: TrainingState = decoded_state["state"]
+	var state: TrainingStateScript = decoded_state["state"]
 	var validation_error: String = _validate_campaign(
 		state,
 		training_service,
@@ -366,7 +440,7 @@ func _decode_snapshot(value: Variant) -> Dictionary:
 		or typeof(snapshot["equipped_item_id"]) != TYPE_STRING
 	):
 		return _invalid_snapshot("Campos de identidade ou inventário inválidos.")
-	var state := TrainingState.new()
+	var state := TrainingStateScript.new()
 	state.week = int(snapshot["week"])
 	state.actions_remaining = int(snapshot["actions_remaining"])
 	state.mission_stage = int(snapshot["mission_stage"])
@@ -413,30 +487,30 @@ func _load_integer_map(
 	return true
 
 
-func _load_route_state(value: Variant, state: TrainingState) -> bool:
+func _load_route_state(value: Variant, state: TrainingStateScript) -> bool:
 	if typeof(value) != TYPE_DICTIONARY:
 		return false
 	var data: Dictionary = value
 	var expected_keys: Array[String] = []
-	for key: StringName in TrainingState.ROUTE_STATE_LIMITS:
+	for key: StringName in TrainingStateScript.ROUTE_STATE_LIMITS:
 		expected_keys.append(String(key))
-	for key: StringName in TrainingState.ROUTE_STATE_BOOLEAN_IDS:
+	for key: StringName in TrainingStateScript.ROUTE_STATE_BOOLEAN_IDS:
 		expected_keys.append(String(key))
 	if not _has_exact_keys(data, expected_keys):
 		return false
-	for key: StringName in TrainingState.ROUTE_STATE_LIMITS:
+	for key: StringName in TrainingStateScript.ROUTE_STATE_LIMITS:
 		var value_at_key: Variant = data[String(key)]
 		if not _is_integer(value_at_key):
 			return false
 		state.route_state[key] = int(value_at_key)
-	for key: StringName in TrainingState.ROUTE_STATE_BOOLEAN_IDS:
+	for key: StringName in TrainingStateScript.ROUTE_STATE_BOOLEAN_IDS:
 		if typeof(data[String(key)]) != TYPE_BOOL:
 			return false
 		state.route_state[key] = data[String(key)]
 	return true
 
 
-func _load_flags(value: Variant, state: TrainingState) -> bool:
+func _load_flags(value: Variant, state: TrainingStateScript) -> bool:
 	if typeof(value) != TYPE_DICTIONARY:
 		return false
 	var data: Dictionary = value
@@ -445,7 +519,7 @@ func _load_flags(value: Variant, state: TrainingState) -> bool:
 		if typeof(key) != TYPE_STRING or typeof(data[key]) != TYPE_BOOL:
 			return false
 		flags[StringName(key)] = data[key]
-	for mission_flag: StringName in TrainingState.MISSION_FLAG_IDS:
+	for mission_flag: StringName in TrainingStateScript.MISSION_FLAG_IDS:
 		if not flags.has(mission_flag):
 			return false
 	state.flags = flags

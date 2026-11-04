@@ -1,6 +1,8 @@
 class_name EconomyService
 extends RefCounted
 
+const TrainingStateScript = preload("res://scripts/training_state.gd")
+
 const ITEM_IDS: Array[StringName] = [
 	&"training_notebook",
 	&"recovery_kit",
@@ -51,7 +53,7 @@ func get_item(item_id: StringName) -> Dictionary:
 	return {}
 
 
-func validate_state(state: TrainingState) -> String:
+func validate_state(state: TrainingStateScript) -> String:
 	if state == null:
 		return "O estado da campanha não está disponível."
 	if state.credits < 0:
@@ -74,7 +76,7 @@ func validate_state(state: TrainingState) -> String:
 	return ""
 
 
-func purchase_item(state: TrainingState, item_id: StringName) -> String:
+func purchase_item(state: TrainingStateScript, item_id: StringName) -> String:
 	var validation_error: String = validate_state(state)
 	if not validation_error.is_empty():
 		return validation_error
@@ -90,14 +92,14 @@ func purchase_item(state: TrainingState, item_id: StringName) -> String:
 			state.credits,
 		]
 
-	var candidate: TrainingState = state.duplicate_state()
+	var candidate: TrainingStateScript = state.duplicate_state()
 	candidate.credits -= price
 	candidate.inventory.append(item_id)
 	state.copy_from(candidate)
 	return ""
 
 
-func equip_item(state: TrainingState, item_id: StringName) -> String:
+func equip_item(state: TrainingStateScript, item_id: StringName) -> String:
 	var validation_error: String = validate_state(state)
 	if not validation_error.is_empty():
 		return validation_error
@@ -110,7 +112,7 @@ func equip_item(state: TrainingState, item_id: StringName) -> String:
 	if state.actions_remaining != _actions_per_week:
 		return "O equipamento só pode ser trocado antes da primeira ação da semana."
 
-	var candidate: TrainingState = state.duplicate_state()
+	var candidate: TrainingStateScript = state.duplicate_state()
 	candidate.equipped_item_id = item_id
 	state.copy_from(candidate)
 	return ""
