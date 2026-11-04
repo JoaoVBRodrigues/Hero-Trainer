@@ -17,7 +17,7 @@ const SNAPSHOT_KEYS: Array[String] = [
 ]
 const STAT_KEYS: Array[String] = ["pot", "res", "tec", "teo", "sin"]
 const AXIS_KEYS: Array[String] = ["autonomy", "solidarity", "ambition", "integrity"]
-const BOND_KEYS: Array[String] = ["hori", "ray", "luppi", "instructor"]
+const BOND_KEYS: Array[String] = ["ray", "luppi", "instructor"]
 
 
 func inspect_save(

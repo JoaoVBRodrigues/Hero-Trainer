@@ -1,310 +1,164 @@
-# HERO TRAINER — Especificação de expansão de conteúdo — Fase 5.0
+# Especificação de Expansão — Fase 5.0
 
-**Tipo:** planejamento de game design, conteúdo e arquitetura  
-**Status:** proposta para aprovação; não implementar  
-**Escopo proposto:** seis eventos, dois conceitos de personagem secundário, duas atividades e até três itens/equipamentos  
-**Projeto:** Hero Trainer  
-**Método:** inspeção estática de código, dados, testes existentes e documentação. Nenhum jogo, teste, simulação ou geração de arte foi executado.
+**Versão:** 1.0
+**Status:** baseline de conteúdo pronta para aprovação; não implementada
+**Escopo aprovado:** todas as áreas, conteúdo focado em Ray e Luppi, escala pequena, assets planejados para geração por IA.
 
-## 1. Resumo executivo
+> Esta especificação descreve propostas de implementação, não novos fatos canônicos. A Fase 5 não deve começar antes da aprovação das escolhas narrativas e do fechamento da validação de retomada do Save/Load.
 
-A expansão pode reutilizar o ciclo semanal, os serviços, o estado de campanha, a navegação e os dados declarativos existentes. O projeto já tem relações, recursos, flags narrativas, prévia de atividade, eventos com escolhas e efeitos, além de uma interface programática que cria cartões a partir do catálogo de atividades.
+## 1. Objetivos e limites
 
-Ainda não há infraestrutura pronta para a expansão completa pretendida:
+Expandir a campanha atual com duas atividades e quatro eventos curtos que aproveitem calendário, treinamento, relações, narrativa, recursos e interface existentes. A experiência continua sendo a campanha atual, com Hori como protagonista jogável e Ray e Luppi como personagens de apoio.
 
-- `TrainingService` valida um esquema estrito de atividade e não aplica aptidões nem mentoria.
-- `NarrativeService` carrega uma rota de rascunho e exige exatamente oito eventos, uma missão e quatro finais.
-- `TrainingState` não contém inventário/equipamento, mentor selecionado ou dados de loja.
-- Não foi localizado serviço de salvamento em disco.
-- A interface de diálogo troca retrato apenas para Hori; falas de outras pessoas não têm retrato próprio.
-- Os conceitos atuais de Ray/Luppi em `data/events.json` não são a fonte que `NarrativeService` carrega.
+### Incluído
 
-Portanto, seis novos eventos, duas novas atividades, mentores, motivação mecânica, loja/equipamentos e salvamento são compatíveis com o produto, mas exigem decisões de dados e integração antes da implementação. A Fase 5.0 não toma essas decisões nem altera o código.
+- Duas atividades desbloqueadas por acontecimentos narrativos: uma ligada ao apoio de Ray e outra ao treino tático de Luppi.
+- Quatro eventos curtos: dois focados em Ray, um em Luppi e um compartilhado pelas três personagens.
+- Uso dos atributos, energia, estresse, motivação, aptidões, mentoria, vínculos, créditos, reputação, flags e sistema de eventos já existentes.
+- Retratos de diálogo e ícones simples, planejados como assets originais gerados por IA.
+- Mudança pequena no serviço de treinamento para reconhecer um `unlock_flag` opcional nas atividades.
 
-## 2. Premissas, cânone e dependência da Fase 4C
+### Fora de escopo
 
-### 2.1 Precedência
+- Novas personagens jogáveis, rotas completas, semanas, recursos, atributos, sistemas de relacionamento ou finais.
+- Medidores de saúde, moralidade, empatia, autonomia, estabilidade psicológica ou condição neurológica.
+- Uma economia separada para o orfanato, saldos pertencentes às crianças, ou novas lojas e equipamentos.
+- Reestruturação do serviço narrativo, do formato de save, da campanha ou das telas principais.
+- Geração de imagens ou implementação nesta tarefa.
 
-1. Cânone confirmado pelo autor em `05_CANONE_PERSONAGENS.md`.
-2. Decisões de sistema explicitamente fornecidas pelo autor.
-3. Propostas desta especificação, sempre não canônicas até aprovação.
-4. Nenhum improviso da implementação deve ser tratado como novo fato de personagem.
+## 2. O que existe e pode ser reutilizado
 
-Os valores de atributos, recursos e aptidões em `characters.json` continuam sendo dados de protótipo, não cânone. A pasta `Hori Draft` continua identificada como rascunho; sua integração atual não converte os textos em cânone.
+O documento anterior listava como ausentes sistemas já implementados na Fase 4C. A baseline real a preservar é:
 
-### 2.2 Decisões 4C fornecidas como restrições, não como comportamento já implementado
+| Sistema | Estado atual e uso previsto na Fase 5 |
+|---|---|
+| Atividades | Há oito atividades carregadas pelo `TrainingService`. Novas atividades devem usar o mesmo formato e fluxo de preview/aplicação, sem criar um segundo sistema. |
+| Atributos e recursos | Treino já altera atributos e recursos como energia, estresse, motivação, créditos e reputação. Os efeitos propostos abaixo são incrementais e não adicionam campos ao estado. |
+| Motivação e aptidões | Ganho de treino é ajustado por faixas de motivação (0,90 / 1,00 / 1,10) e aptidões (0,85–1,15); os novos treinos devem passar pelo mesmo cálculo. |
+| Mentoria e risco | Mentoria elegível reduz o risco em 5 pontos percentuais. A Fase 5 não cria uma regra paralela de sucesso. |
+| Relações | Há vínculos para Ray, Luppi e instrutor. Eventos e atividades devem atualizar esses vínculos existentes, sem criar um vínculo para cada criança ou professora. |
+| Economia | Há loja opcional e itens existentes com preços de 80, 120 e 160 créditos. A contribuição narrativa proposta para Ray usa créditos da campanha, não uma carteira nova. |
+| Equipamentos | Inventário e equipamento já são parte do estado persistido; a Fase 5 não adiciona equipamentos. |
+| Missão e finais | A missão e seus finais já existem. A expiração ocorre na transição da semana 8 para a 9. A expansão não modifica as condições dos finais. |
+| Save/Load | Existe save JSON versionado com arquivo principal, temporário e cópia de recuperação. Flags booleanas de eventos podem ser persistidas sem adicionar campos ao `route_state`. A retomada após reiniciar ainda precisa de validação funcional concluída. |
+| Eventos | A fonte ativa é `Hori Draft/events_hori_draft.json`; o serviço narrativo atualmente valida uma lista de exatamente oito eventos. A expansão propõe doze eventos no total, portanto o limite precisa ser atualizado junto com os dados. `data/events.json` não deve ser tratado como fonte ativa sem confirmação no código. |
 
-O briefing da Fase 5.0 lista como direções aprovadas:
+O risco de atividade continua usando a fórmula existente, com energia, estresse, teto atual e ajuste de mentoria. Os valores de atributos e recursos abaixo são propostas iniciais para playtest e não alteram a fórmula compartilhada.
 
-- Falha automática da missão após a semana 8.
-- Pulso de Contenção determinístico: estabilidade `>= 55` e TEC `>= 30`.
-- Influência mecânica da motivação.
-- Influência mecânica de aptidões e mentoria.
-- Loja, equipamentos e gastos.
-- Salvamento em disco no MVP.
+## 3. Cânone confirmado e propostas
 
-Estas direções são tratadas aqui como restrições de produto informadas pelo autor. **Não foi localizado, na documentação atual examinada, um registro específico da Fase 4C que defina todos os contratos de implementação.** A auditoria estática da Fase 4B também descreve motivação, aptidões/mentoria, economia e save como sistemas ainda ausentes e aponta que `is_mission_due` não respeita `week_max`.
+### Fatos canônicos a preservar
 
-Antes das Fases 5.1–5.5, as decisões da Fase 4C precisam ter especificação operacional aprovada: condições exatas, dados gravados, momentos de aplicação, precedência e migração de saves. Esta especificação não tenta preencher essas lacunas.
+- **Ray:** mulher alta e fisicamente forte, com chifres decorrentes de mutação. Separou-se de amigas na América para estudar e obter dinheiro para sustentá-las e custear cuidados relacionados à doença do Honkai. O orfanato e as crianças têm relevância emocional e mecânica.
+- **Luppi:** garota-rato, resultado de experimento e autista. Tem dificuldade para compreender certos sentimentos, mas sente e demonstra emoções e empatia. Gosta de combate, faz referências frequentes a jogos, concentra-se intensamente em seus interesses, respeita a cadeia de comando e tem vínculos próximos com professoras que cuidam dela. O experimento não deve ser apresentado como causa do autismo.
+- **Hori:** jovem animada e sociável, com muitas amigas. Carrega um núcleo perigoso que já feriu pessoas próximas, tem dificuldade para reconhecer rostos e ouve a voz de uma versão mais malvada de si. Esconde sofrimento atrás do sorriso.
 
-## 3. Inventário do projeto e reutilização
+### Propostas desta especificação (não canônicas até aprovação)
 
-| Sistema/arquivo | O que existe hoje | Reutilização na Fase 5 | Limitação ou dependência |
-|---|---|---|---|
-| `scripts/training_state.gd` | Semana, ações, atributos, eixos, estado narrativo, flags, missão, recursos, vínculos e RNG; operações de duplicação/cópia | Manter uma única fonte de verdade para novas escolhas e efeitos | Sem inventário, equipamento, aquisição, mentores ativos ou versão de save |
-| `scripts/training_service.gd` | Carrega Hori e catálogo de atividades; prévia, energia, efeitos, risco, caps, RNG e avanço semanal | Reutilizar o fluxo de catálogo, prévia e aplicação | O esquema de atividade é estrito; aptidões e `mentor_affinity` não afetam resultados; bônus de mentoria é placeholder zero |
-| `scripts/narrative_service.gd` | Janelas, prioridade, condições, escolhas atômicas, deltas de atributos/recursos/vínculos/eixos/estado de rota e flags; missão e finais | Reutilizar eventos declarativos, flags, efeitos e resultados estruturados | Carrega os arquivos `Hori Draft`; exige exatamente 8 eventos, 1 missão e 4 finais; listas de efeitos e IDs válidos são estritas |
-| `scripts/training_dashboard.gd` | Hub, Treinamento, Status, Relações e diálogo construídos principalmente em código; cartões percorrem os IDs do serviço | Acrescentar conteúdo na interface existente, sem criar um segundo estado | Layout atual categoriza quatro tipos conhecidos; integração de loja/inventário e participantes novos precisa de decisão de UX |
-| `scripts/training_theme.gd` | Paleta centralizada índigo, azul-petróleo, menta, coral, dourado e creme | Aplicar a componentes de novas telas/cartões | Não é necessário criar nova identidade visual |
-| `scenes/training_dashboard.tscn` | Cena principal única | Preservar a inicialização e a navegação | A apresentação de diálogo/caracteres novos é atualmente especializada em Hori |
-| `data/activities.json` | 8 atividades, calendário de 16 semanas × 3 blocos e limites | Fonte declarativa para novas atividades | Novas propriedades exigirão atualização coordenada do validador/serviço |
-| `data/characters.json` | Hori jogável; Ray e Luppi NPC; aptidões e valores prototípicos | Reutilizar dados de Hori e relações existentes | O serviço seleciona Hori explicitamente; os valores/aptidões de outros personagens não os tornam jogáveis |
-| `Hori Draft/events_hori_draft.json` | 8 eventos da rota jogável atual | Referência de formato e efeitos; continuidade de Hori | Validação de contagem fixa impede apenas anexar eventos sem alterar a estratégia de carregamento |
-| `data/events.json` | 6 eventos demonstrativos, incluindo conceitos de Ray, Luppi e uma missão compartilhada | Material candidato para revisão e reaproveitamento | `NarrativeService` não lê este arquivo; não mesclar automaticamente com os rascunhos ativos |
-| `Hori Draft/missions_hori_draft.json` e `endings_hori_draft.json` | Uma missão de 3 etapas e 4 finais de Hori | Preservar como fonte da campanha atual | Os efeitos e as condições continuam sujeitos aos contratos da Fase 4C |
-| `data/endings.json` | Exemplos de finais de mais de uma personagem | Referência de ideias, não implementação ativa comprovada | Não é a fonte de finais carregada pelo `NarrativeService` atual |
-| Testes | `test_training_service.gd`, `test_narrative_campaign.gd`, `test_dashboard_presentation.gd` | Expandir regressões de serviço, narrativa e interface quando a implementação for autorizada | Foram lidos estaticamente; nenhum foi executado nesta fase |
+- Os quatro eventos, suas escolhas, textos, flags, semanas e efeitos.
+- Os nomes técnicos dos eventos/atividades e os valores mecânicos sugeridos.
+- A forma visual específica dos retratos e ícones, que ainda requer aprovação autoral.
 
-### 3.1 Divergência entre fontes narrativas
+Não inventar nomes, idades, aparência, diagnósticos, falas, relações ou destinos para as amigas de Ray, as crianças do orfanato ou as professoras de Luppi. Referências de Luppi a jogos devem ser genéricas ou originais, sem reproduzir jogos, personagens, diálogos, códigos ou artes proprietárias.
 
-O projeto contém dois conjuntos de conteúdo que não devem ser confundidos:
+## 4. Atividades propostas
 
-- O serviço narrativo atual aponta para `Hori Draft/events_hori_draft.json`, `missions_hori_draft.json` e `endings_hori_draft.json`.
-- `data/events.json` contém conteúdo mais amplo/de exemplo, inclusive remessa do orfanato de Ray e ordem de treinamento de Luppi, mas não é o arquivo indicado pelo serviço.
+As duas atividades aparecem na lista existente e usam o preview e a aplicação de `TrainingService`. `unlock_flag` é uma extensão pequena proposta: quando presente, a atividade fica indisponível até a flag correspondente ser verdadeira; atividades sem essa propriedade mantêm o comportamento atual. A tela deve explicar o requisito sem consumir ação, energia, RNG ou recursos.
 
-**Decisão necessária antes da Fase 5.1:** escolher se os novos eventos serão incorporados ao conjunto ativo de Hori, se os dados serão separados por rota/campanha ou se haverá uma composição explícita de arquivos. Não copiar nem sobrescrever dados existentes durante a especificação.
+| ID proposto | Nome exibido | Desbloqueio | Efeitos-base propostos | Regras |
+|---|---|---|---|---|
+| `ray_orphanage_logistics` | Apoiar a remessa | `ray_support_activity_unlocked`, definido pelo primeiro evento de Ray | Créditos +20, energia −8, estresse +4, vínculo Ray +3 | Atividade de trabalho determinística. A recompensa é menor que a do estágio existente; o vínculo é o diferencial. Não cria saldo ou medidor para o orfanato. |
+| `luppi_tactical_drill` | Treino tático com Luppi | `luppi_tactics_activity_unlocked`, definido pelo evento de Luppi | POT +2, TEC +3, energia −12, estresse +4 | Treino sujeito ao cálculo atual de aptidão, motivação, risco e mentoria. Não altera um medidor de autonomia, empatia ou condição neurológica. |
 
-## 4. Escopo de conteúdo proposto
+Os valores são baseline para uma revisão de balanceamento focada após a implementação. Não devem ser aumentados para tornar as novas atividades universalmente melhores que as oito existentes. A atividade de Ray não paga “por criança” e não transforma o cuidado do orfanato em recompensa escalável.
 
-As quantidades abaixo são metas de planejamento. Não são limites técnicos nem conteúdo aprovado.
+## 5. Eventos e conteúdo narrativo proposto
 
-- **6 eventos novos**, em adição aos oito atuais apenas se o autor confirmar esse sentido da meta (o resultado seria 14 eventos na rota de Hori).
-- **2 personagens secundários** em fichas conceituais não canônicas.
-- **2 atividades novas**, sem valores finais de custo, ganho ou chance.
-- **Até 3 equipamentos/itens**, com efeitos conceituais e sem preços finais.
-- Nenhuma nova campanha jogável, árvore extensa de habilidades, missão adicional, final novo ou mudança da duração atual é incluída nesta proposta.
+Adicionar os eventos à fonte ativa existente, preservando a sequência e os finais de Hori. A ordem abaixo usa acontecimentos atuais como âncoras; as flags exatas devem ser confirmadas no JSON durante a tarefa de implementação. As cenas novas são curtas e não devem interromper ou substituir uma escolha já disponível.
 
-### 4.1 Proposta de seis eventos
+| ID proposto | Janela | Conteúdo e escolhas | Efeitos/flags |
+|---|---:|---|---|
+| `ray_orphanage_remittance_w08` | Semana 8 | Ray explica como concilia estudo e trabalho para apoiar as amigas e custear cuidados ligados à doença do Honkai. A conversa conecta essa motivação ao orfanato e às crianças, sem inventar nomes ou detalhes médicos. Hori pode contribuir com 20 créditos da campanha para a remessa ou ajudar Ray a organizar um plano sem custo. | Ambas as escolhas definem `ray_support_activity_unlocked`. Contribuir exige créditos ≥20, desconta 20 e aumenta vínculo Ray em 5; planejar não custa créditos e aumenta vínculo Ray em 3. Registar uma flag distinta para cada escolha. |
+| `luppi_tactical_briefing_w10` | Semana 10, após o evento estratégico de Hori na janela 9–10 | Luppi propõe uma solução de combate com referências genéricas a jogos. A professora responsável define objetivo e limites; Hori pode pedir um plano tático próprio dentro da ordem recebida ou confirmar instruções diretas e claras. A cena demonstra que respeitar a cadeia de comando não elimina a iniciativa de Luppi. | Ambas as escolhas definem `luppi_tactics_activity_unlocked`; vínculo Luppi +3. Guardar a abordagem escolhida como flag, sem converter escolha em avaliação de empatia ou obediência moral. |
+| `shared_training_coordination_w13` | Semana 13, após o evento de investigação de Hori na janela 12–13 e após os dois eventos de personagem | Exercício curto de equipe: Ray oferece apoio físico, Luppi trabalha a tática sob a orientação combinada e Hori coordena a comunicação. A escolha de Hori pode priorizar um plano conjunto ou delegar a parte tática dentro dos limites acordados. | Vínculo Ray +2 e Luppi +2; definir `shared_training_coordination_seen`. Sem mudança nos eixos de final, estabilidade do núcleo ou atributos. |
+| `ray_orphanage_followup_w15` | Semana 15, após o evento de Ray existente na janela 14–15 | Retorno breve à remessa e às crianças. O texto reconhece a continuidade do estudo e do apoio de Ray; a resposta de Hori varia conforme a contribuição ou o plano escolhido na semana 8. Não introduzir crise, cura ou resultado definitivo para o orfanato. | Definir `ray_orphanage_followup_seen`; vínculo Ray +2. Sem novos recursos, medidores ou finais. |
 
-Os títulos, IDs e efeitos são rascunhos de planejamento. As janelas finais dependem do fechamento da missão na semana 8 e da cadência aprovada.
+O agendamento deliberadamente coloca no máximo um evento novo na mesma semana de um evento existente. Nessas semanas, o evento novo só fica elegível depois da âncora indicada, formando uma sequência curta e intencional de até duas cenas; não permitir que flags incompletas façam eventos novos repetirem ou dispararem antes da âncora. O serviço atual pode processar eventos elegíveis em sequência, portanto essa ordem precisa ser testada com a campanha real.
 
-| ID provisório | Foco e participantes | Cena e função | Requisitos candidatos | Consequências candidatas | Repetição e assets |
-|---|---|---|---|---|---|
-| `p5_hori_quiet_day` | Hori, Ray, Luppi e amigas/colegas já aprovadas | Momento cotidiano leve após pressão de missão; mostrar Hori sociável e bem-humorada, não apenas em crise | Janela pós-missão; estado da missão definido pela Fase 4C | Flag de cena vista; vínculo/solidariedade apenas se o autor aprovar efeito mecânico | Uma vez; reutilizar sala da academia, com possível ilustração especial se aprovada |
-| `p5_hori_support_terms` | Hori e uma colega próxima | Hori define, com agência, que sinais/contexto prefere usar em uma situação social; não transformar reconhecimento facial em falha moral ou penalidade automática | Janela posterior ao evento existente de pistas faciais; não duplicar a mesma revelação | Flag de preferência/contexto escolhida; só usar campo novo se a persistência for especificada | Uma vez; retrato Hori existente; ilustração opcional |
-| `p5_ray_orphanage_contact` | Ray, Hori e/ou Luppi | Ray recebe notícia ou contato das amigas/crianças e decide entre renda, apoio compartilhado ou contato; manter o orfanato emocionalmente significativo, sem quantificar a saúde das crianças | Janela e condição de contato a decidir; aproveitar para revisar `ray_orphanage_remittance_w02` de `data/events.json` | Escolha com consequências de vínculo/tempo/finanças somente após modelo econômico 4C; sem nome, diagnóstico ou detalhe não confirmado das crianças | Uma vez; fundo atual pode bastar; retrato de Ray ausente |
-| `p5_luppi_command_review` | Luppi e professora/instrutora já aprovada | Situação de estratégia/comando em treino: Luppi segue uma ordem, pede esclarecimento ou propõe alternativa dentro da cadeia de comando; preservar referências originais a jogos | Janela em torno de atividade estratégica; adaptar, não duplicar, `luppi_training_order_w03` de `data/events.json` | Flag e consequência relacional; sem “corrigir” autismo, negar emoções ou atribuir intenção hostil às professoras | Uma vez; retrato de Luppi ausente; cenário de treino existente |
-| `p5_pair_training_debrief` | Hori com Ray ou Luppi, conforme escolha/eligibilidade | Debrief de treino em dupla que dá contexto à nova atividade e evidencia formas distintas de colaborar | Atividade de dupla desbloqueada ou janela aprovada; pré-requisito depende do modelo de vínculo/aptidão | Flag de participação e vínculo apenas se houver regra explícita; não duplicar o ganho da atividade | Uma vez por personagem ou uma vez total — decisão pendente; possível CG única |
-| `p5_academy_open_day` | Hori, Ray, Luppi e os dois novos conceitos secundários | Evento coletivo de apresentação dos secundários por sua função, não por exposição biográfica | Personagens aprovados e sistema de mentoria/atividades disponível, se a cena o exigir | Apresentar mentora e colega; desbloqueios mecânicos somente depois de aprovados os contratos de 4C | Uma vez; cenário de academia existente; novos retratos necessários |
+## 6. Efeitos mecânicos e integração
 
-**Cadência:** os eventos atuais cobrem janelas ao longo das semanas 1–15, a missão está na 8 e a campanha termina na 16. Como o fluxo abre eventos elegíveis automaticamente e não há uma fila de adiamento configurável, seis novas cenas podem causar várias cenas em sequência na mesma semana. Antes de fixar janelas, aprovar uma destas políticas: (a) máximo de um evento de personagem por semana; (b) cenas adicionais substituem/expandem cenas existentes; ou (c) cenas consecutivas são parte intencional da experiência. A opção técnica depende da semântica de evento/adiamento que vier a ser aprovada.
+- Vínculos alterados usam somente as chaves já existentes `ray` e `luppi`.
+- O custo opcional de 20 créditos sai do saldo atual da campanha; a escolha deve ser indisponível ou validada com mensagem clara quando o saldo for insuficiente. Não permitir saldo negativo.
+- Flags novas são booleanas e ficam no mapa de flags já persistido. Não adicionar uma carteira para o orfanato, um eixo narrativo, campo a `route_state` ou versão de save apenas para esta expansão.
+- As atividades usam o mesmo custo de ação, preview de consequências, consumo de recursos e cálculo de treino já existentes.
+- Uma atividade bloqueada não pode ser aplicada por chamada direta do serviço, mesmo que a interface esteja contornada.
+- Não modificar as condições de missão, estabilidade do núcleo, reconhecimento facial, confiança ou finais de Hori.
+- Condições neurológicas e experiências psicológicas são fatos narrativos, nunca pontuações de caráter ou condições de vitória/fracasso.
 
-### 4.2 Fichas conceituais de personagens secundários
+## 7. Progressão e desbloqueios
 
-As fichas abaixo são **propostas inteiramente não canônicas**, sem inclusão em `characters.json`. Nome, idade, aparência e história precisam de aprovação do autor antes de qualquer roteiro ou asset.
+1. A campanha começa sem as duas atividades novas disponíveis.
+2. O evento de Ray da semana 8 habilita `ray_orphanage_logistics` em qualquer uma das duas escolhas; apenas a escolha de contribuição gasta créditos.
+3. O evento de Luppi da semana 10 habilita `luppi_tactical_drill` em qualquer uma das duas escolhas.
+4. O evento compartilhado só fica elegível depois dos eventos de Ray e Luppi e de sua âncora narrativa de Hori.
+5. O retorno de Ray só fica elegível depois do evento de Ray da semana 8 e da âncora existente de Ray na janela 14–15.
+6. Os eventos novos não criam nem alteram finais, não alteram o desbloqueio da missão e não exigem completar uma atividade para continuar a campanha.
 
-#### Personagem A — instrutora especializada
+Usar flags específicas e estáveis, por exemplo: `ray_support_activity_unlocked`, `ray_remittance_contributed`, `ray_remittance_plan`, `luppi_tactics_activity_unlocked`, `luppi_tactics_approach`, `shared_training_coordination_seen` e `ray_orphanage_followup_seen`. Antes da implementação, confirmar que os nomes não colidem com flags atuais.
 
-- **Nome provisório:** Lia Moura.
-- **Faixa etária proposta:** adulta, 30–36 anos; não é uma idade estabelecida no universo.
-- **Aparência conceitual:** uniforme funcional de academia, cabelo preso e detalhes visuais de equipamento de campo; silhueta e cores ainda dependem da Bíblia Visual e do autor.
-- **Personalidade proposta:** objetiva, paciente ao explicar procedimentos e capaz de rever uma instrução quando recebe informação nova; não infalível nem antagonista por padrão.
-- **História proposta:** entrou na docência depois de experiência em treinamento de campo. Nenhum vínculo com incidentes ou personagens canônicos é presumido.
-- **Motivação proposta:** reduzir erros de coordenação sem tratar cadetes como recursos descartáveis.
-- **Relações propostas:** mentora técnica acessível a Hori, Ray e Luppi, com consentimento/limites próprios para cada relação; não substituir as professoras canônicas que cuidam de Luppi.
-- **Função narrativa:** introduzir discussão de comunicação, preparo e limites institucionais sem resolver o cânone do núcleo ou da mutação.
-- **Possível função mecânica:** oferecer a atividade “Aula especializada” se a mecânica de mentoria da Fase 4C for aprovada.
-- **Aprovações pendentes:** nome, design, histórico, maneira de falar, escopo de autoridade e se o papel deve ser um indivíduo nomeado ou uma instrutora genérica.
+## 8. Interface e assets
 
-#### Personagem B — colega de academia
+### Interface
 
-- **Nome provisório:** Nara Vale.
-- **Faixa etária proposta:** adulta, 20–24 anos; não é uma idade estabelecida no universo.
-- **Aparência conceitual:** vestimenta de cadete com itens de organização de campo; aparência completa, paleta e silhueta pendentes de aprovação.
-- **Personalidade proposta:** curiosa, organizada e franca; pode errar uma leitura social e corrigir-se sem que a narrativa a converta em representante de um diagnóstico.
-- **História proposta:** colega que se especializa em logística e comunicação de equipe. Não possui relação preexistente com o orfanato, o núcleo ou o experimento de Luppi.
-- **Motivação proposta:** provar que preparação e coordenação também são competências de campo.
-- **Relações propostas:** amizade gradual com as três protagonistas, baseada em cenas e escolhas, sem substituir vínculos já estabelecidos.
-- **Função narrativa:** ponto de vista externo para atividades compartilhadas e vida cotidiana da academia.
-- **Possível função mecânica:** auxiliar de atividade em dupla ou desbloqueio de uma interação cotidiana, somente se o sistema suportar suporte sem novo medidor obrigatório.
-- **Aprovações pendentes:** nome, idade, aparência, personalidade, história e se a colega deve influenciar atributos ou apenas narrativa.
+- Inserir as atividades nas categorias existentes; usar os cards, preview e estados de seleção atuais.
+- Exibir o motivo de bloqueio e a condição de desbloqueio. Não apresentar botão visualmente disponível quando o serviço rejeitar a atividade.
+- Eventos continuam na interface de diálogo existente. Resolver retrato pelo personagem que fala; manter o retrato atual de Hori como fallback e nunca exibir um retrato incorreto para Ray ou Luppi.
+- Mostrar claramente o custo de 20 créditos na escolha de contribuição e o saldo insuficiente, sem confirmar a escolha.
+- Reutilizar fundos, painéis, loja e telas de relações existentes. Não criar uma tela de orfanato ou tela de combate.
 
-### 4.3 Duas atividades novas
+### Assets planejados para geração por IA
 
-Os IDs são rascunhos. Os campos são requisitos de design; valores e fórmulas ficam em aberto até a auditoria de balanceamento e o fechamento da Fase 4C.
-
-#### Treinamento em dupla — `pair_training` (ID provisório)
-
-- **Categoria candidata:** treinamento em equipe.
-- **Função:** trocar parte do foco individual por coordenação com Ray ou Luppi; deve ter identidade distinta dos treinos solo.
-- **Requisitos:** uma parceira elegível e um nível mínimo de relação, se a regra de vínculo for aprovada; não exigir relação máxima.
-- **Custo de energia/créditos:** pendente de análise; não definir neste documento.
-- **Ganhos:** foco em um ou dois atributos coerentes com a sessão; possível vínculo somente se não duplicar ou explorar ganhos sociais repetíveis.
-- **Risco:** usar apenas o cálculo aprovado pela Fase 4C; não criar segunda fórmula de falha.
-- **Motivação/aptidão/mentora:** integrar pelos contratos comuns aprovados, sem bônus paralelos exclusivos.
-- **Feedback:** mostrar parceira, custo total, cenário de sucesso/falha e consequência relacional antes da confirmação.
-- **Desbloqueios:** evento de debrief opcional, sem tornar a atividade obrigatória para completar a campanha.
-- **Dados/arquitetura:** pode reaproveitar o catálogo de atividade e a prévia; exige suporte explícito a participante/parceira e validação no serviço.
-
-#### Aula especializada — `specialized_lesson` (ID provisório)
-
-- **Categoria candidata:** treinamento/mentoria.
-- **Função:** especializar uma sessão em TEC, TEO ou SIN, por uma escolha clara do jogador.
-- **Requisitos:** mentora disponível/desbloqueada, caso o modelo da Fase 4C use disponibilidade; não presumir um atributo mínimo.
-- **Custo de energia/créditos:** pendente de análise; nenhum valor é fixado.
-- **Ganhos:** progressão especializada, limitada pelos caps e pelo modelo de aptidões aprovado.
-- **Risco:** herdar o fluxo comum de prévia/resultado; não esconder chance ou efeito no texto narrativo.
-- **Motivação/aptidão/mentora:** usar uma única fórmula compartilhada com as demais atividades.
-- **Feedback:** identificação da mentora, habilidade/aptidão pertinente, custo, mudança esperada e disponibilidade.
-- **Desbloqueios:** pode abrir cenas ou opções de treino, mas não requisito obrigatório para os quatro finais existentes.
-- **Dados/arquitetura:** estender o esquema de atividade de forma tipada; `mentor_affinity` atual é metadado e não é modificador funcional.
-
-## 5. Progressão, equipamentos e economia
-
-### 5.1 Aptidões, mentoria e motivação
-
-| Elemento | Estado atual | Especificação proposta | Dependência |
-|---|---|---|---|
-| Aptidões | `characters.json` contém multiplicadores por atividade; `TrainingService` não os lê para calcular ganhos | Uma única contribuição por atividade, exibida no preview; preservar aptidões como preferência/modificador, não como bloqueio de rota | Fase 4C precisa aprovar intervalo, arredondamento, ordem com caps, persistência de personagem e experiência de balanço |
-| Mentoria | Campo `mentor_affinity` existe; bônus da fórmula é placeholder zero; há vínculo `instructor`, mas nenhuma seleção ativa de mentora | Mentora identificada, efeito delimitado e relação sem requisito de grind alto; definir se mentor é fixo na atividade, personagem disponível ou escolha do jogador | Fase 4C precisa definir fórmula, disponibilidade, stack com aptidão e efeito de vínculos |
-| Motivação | `TrainingState.motivation` existe, começa como `mood`; descanso e algumas escolhas a alteram; não afeta treino hoje | Um fator legível, com preview, comportamento neutro dentro de faixa e sem tratar emoção como moralidade | Fase 4C precisa aprovar curva, limites e se motivação altera ganho, chance ou ambos; esta proposta não escolhe |
-| Especialização | Não há árvore nem escolha de especialização implementada | **Recomendação:** adiar especialização para depois do protótipo das atividades; considerar no máximo uma escolha curta de foco, não uma árvore | Decidir após playtest e não bloquear campanha/atividades básicas |
-
-Não duplicar esses fatores dentro das atividades novas. O motor deve calcular uma vez e apresentar o resultado final em um formato consistente.
-
-### 5.2 Equipamentos — três conceitos, efeitos ainda sujeitos a aprovação
-
-Itens são conceitos não canônicos, não adicionados à economia atual. Não há preços, requisitos numéricos ou slots aprovados.
-
-| Nome provisório | Categoria | Função/efeito conceitual | Custo e requisitos | Limite de uso | Asset |
-|---|---|---|---|---|---|
-| Faixas de treino ajustáveis | Equipamento de treino | Ajudar uma sessão física específica; bônus exato precisa respeitar a fórmula comum e não anular custo/risco | Créditos e requisito pendentes | Um efeito equipado por sessão; evitar empilhamento com itens equivalentes | Ícone de item |
-| Tablet de análise de campo | Ferramenta tática | Melhorar informação/previsão em atividade técnica ou de missão, sem conceder sucesso automático | Créditos e requisito pendentes | Uso ou carga limitada a definir; não contornar falha recuperável | Ícone de tablet |
-| Comunicador de equipe | Equipamento de equipe | Dar suporte a coordenação de atividade dupla/missão; não conceder vínculo automaticamente | Créditos e requisito pendentes | Um item ativo; compatibilidade com atividade de equipe a definir | Ícone de comunicador |
-
-**Modelo mínimo recomendado para avaliação:** catálogo pequeno, compra opcional, efeito explícito e sem árvore de melhoria. Antes de implementar, decidir se cada item é consumível, desbloqueio permanente ou equipamento equipado. Não misturar compra permanente e bônus consumível sem limites claros.
-
-### 5.3 Economia
-
-| Fluxo atual/proposto | Fonte ou destino | Situação |
+| Asset | Quantidade/formato | Função e direção visual |
 |---|---|---|
-| Saldo inicial | 50 créditos em dados de Hori | Protótipo atual |
-| Trabalho/estágio | +25 créditos e +1 reputação por ação de estágio | Fonte atual repetível; até 48 usos cabem no calendário, mas não há sink atual |
-| Recompensa narrativa | bolsa/apoio ou remuneração como hipótese | Só planejar depois de validar a história de Ray e o modelo da Fase 4C |
-| Loja | aquisição dos até três itens conceituais | Sink proposto; preços não definidos |
-| Gastos de missão | ferramenta/preparação opcional | Alternativa de sink, não criar sem aprovação de custo e sem caminho sem gasto |
+| Retrato de Ray | 1 PNG com transparência, RGBA, base de 1024×1536 | Retrato de diálogo em busto. Mulher alta e fisicamente forte; incluir chifres decorrentes de mutação de acordo com o desenho aprovado. Expressão acolhedora e determinada, sem associar a personagem a um diagnóstico ou a uma aparência de criança. |
+| Retrato de Luppi | 1 PNG com transparência, RGBA, base de 1024×1536 | Retrato de diálogo em busto. Garota-rato com aparência e silhueta a aprovar pelo autor; expressão concentrada e viva, sem representar autismo como frieza, falta de empatia ou caricatura. |
+| Ícone da remessa | 1 PNG quadrado, RGBA, 512×512 | Ícone legível em tamanho pequeno, representando materiais/caixas organizadas para apoio comunitário. Sem texto, símbolos médicos ou rostos de crianças. |
+| Ícone de treino tático | 1 PNG quadrado, RGBA, 512×512 | Ícone legível para a atividade de Luppi, representando planejamento de treino sem armas realistas ou marcas/jogos identificáveis. |
 
-**Recomendação econômica:** toda compra deve ser opcional para completar a campanha e não tornar a atividade essencial inacessível. Projetar a curva de custos a partir do saldo inicial e do número máximo plausível de estágios, não de uma estimativa de sessões ilimitadas. Evitar transformar as necessidades do orfanato em punição financeira ou em barra de vida das crianças.
+Reutilizar os fundos existentes para todas as cenas; não produzir CGs ou cenários novos nesta escala. Usar apenas prompts e composições originais. Revisar recorte, silhueta, contraste, consistência com a arte atual e representações estigmatizantes antes de integrar. Não usar imagens, códigos, nomes, interfaces ou personagens proprietários dos jogos de inspiração.
 
-**Decisão pendente:** definir quais fontes continuam existindo, se a renda excedente é útil dentro de uma campanha finita e se haverá opção de ajuda/bolsa que preserve agência sem apagar o objetivo financeiro de Ray. Não fixar preços antes dessa decisão.
+## 9. Critérios de aceitação
 
-## 6. Assets e direção de arte
+- A fonte ativa carrega os oito eventos existentes e os quatro novos, com IDs únicos e validação atualizada de forma explícita.
+- Cada evento novo ocorre no máximo uma vez, depois de sua âncora e dentro da janela definida; nenhuma sequência pula ou bloqueia a missão/finais.
+- As duas atividades respeitam bloqueio no serviço e na interface; indisponibilidade não consome ação, recursos ou RNG.
+- Preview e resolução aplicam os mesmos modificadores já existentes de motivação, aptidão, risco e mentoria. O custo de Ray nunca deixa créditos negativos.
+- Vínculos e flags persistem no formato de save existente, incluindo inventário e equipamento; nenhuma chave nova é adicionada ao `route_state`.
+- Retomar uma campanha salva preserva semana, ações, atributos, energia, estresse, motivação, créditos, reputação, vínculos, flags e equipamentos. **Este critério é bloqueador para declarar a integração da Fase 5 pronta**, pois a validação de retomada desta tarefa não foi concluída.
+- Retratos de Ray e Luppi são resolvidos pelo diálogo correto; Hori continua usando o retrato existente.
+- Nenhum teste ou texto atribui moralidade, empatia ou valor a autismo, dificuldade de reconhecer rostos ou sofrimento psicológico.
+- As quatro imagens são originais, aprovadas pelo autor e exportadas nos formatos/tamanhos definidos; não gerar nem integrar assets antes da aprovação.
 
-### 6.1 Inventário estático disponível
+## 10. Resultado da validação de Save/Load que informa esta especificação
 
-`assets/phase3/` contém sete assets de jogo catalogados em `10_ASSET_MANIFEST.md`:
+**Resultado: parcial; Save/Load não pode ser declarado funcional ainda.**
 
-- **Cenários (3):** sala da academia, laboratório e observatório.
-- **Retratos (4):** Hori neutra, feliz, preocupada e determinada.
-- **Retratos ausentes:** Ray, Luppi e personagens secundários.
-- **Ícones de atividades/equipamentos e ilustrações especiais de evento:** não constam no manifesto existente.
+- Na primeira inicialização, o snapshot inicial foi rejeitado porque a validação esperava a chave de vínculo `hori`, enquanto o estado inicial contém `ray`, `luppi` e `instructor`. Foi corrigida a lista de chaves em `scripts/campaign_save_service.gd`; depois disso, o autosave inicial e saves após ações foram observados.
+- Pela interface foram observados treino, descanso, avanço para a semana 2, compra e equipamento do Caderno de treino, além de uma escolha narrativa da Hori. Um snapshot persistido continha recursos, semana, ações, vínculos, flags, inventário e equipamento.
+- Após reiniciar para verificar a retomada, o editor apresentou erros de reload/resolução de tipos de serviços; a cena voltou sem campanha carregada. Não foi possível confirmar o carregamento do snapshot nem uma segunda rodada de salvar/carregar. A causa exata dos erros não foi estabelecida.
+- Não foram testados arquivo ausente em uma segunda sessão controlada, recuperação por backup nem arquivo corrompido.
+- Não executar novas tentativas do Godot sem autorização e sem primeiro definir uma forma controlada de investigar os erros de carregamento. Os arquivos de save gerados pelo teste devem ser tratados como dados do usuário; não apagá-los como parte da implementação da Fase 5.
 
-As capturas de `captures/phase4a/`, inclusive propostas e resoluções, são referência de composição/interface; não devem ser tratadas automaticamente como arte reutilizável de jogo. A licença/proveniência dos arquivos existentes precisa ser confirmada antes de publicação, conforme o manifesto.
+## 11. Plano de implementação em tarefas pequenas
 
-O diálogo só atualiza a textura para `speaker_id == "hori"`; hoje os demais falantes mantêm a textura anterior. Para uma expansão com falas de Ray, Luppi e novos secundários, especificar resolução de speaker e retrato/placeholder antes de produzir cenas ilustradas.
+Cada etapa deve ser autorizada e validada separadamente; não antecipar etapas:
 
-### 6.2 Plano visual sem geração nesta fase
+1. **Fechar a retomada do Save/Load:** investigar estaticamente os erros de carregamento e preparar uma reprodução funcional controlada, preservando os saves existentes. Não iniciar conteúdo novo até confirmar a retomada.
+2. **Integrar a estrutura dos eventos:** confirmar flags-âncora, acrescentar somente os quatro eventos e ajustar a validação de oito para doze; testar unicidade, ordem, janelas e continuidade da missão.
+3. **Adicionar o bloqueio por `unlock_flag`:** implementar suporte opcional no serviço e na UI, mantendo inalteradas as atividades atuais; adicionar testes focados de bloqueio e consumo de recursos.
+4. **Adicionar a atividade de Ray:** inserir dados e validar crédito, energia, estresse, vínculo e bloqueio, sem introduzir saldo do orfanato.
+5. **Adicionar a atividade de Luppi:** inserir dados e validar modificadores existentes de treino, mentoria e falha.
+6. **Integrar retratos e ícones aprovados:** importar apenas assets originais revisados e verificar enquadramento/fallback nos diálogos e cards existentes.
+7. **Revisão integrada curta:** percorrer manualmente a sequência nova uma vez e executar apenas os testes focados aprovados; conferir saves, custos, relações, ordem narrativa e critérios de aceitação.
 
-1. Aprovar as fichas e a Bíblia Visual antes de criar rostos/roupas finais.
-2. Reutilizar primeiro os três cenários e expressões de Hori já existentes.
-3. Definir proporção, resolução, transparência, enquadramento, paleta e destino de importação por categoria.
-4. Criar prompts mestres originais e nomenclatura versionada na Fase 5.4.
-5. Priorizar: retratos expressivos de Ray/Luppi; retratos/poses dos dois secundários se aprovados; ícones das atividades; ícones dos três itens.
-6. Limitar ilustrações especiais a até três e cenários novos a até dois, gerando apenas para lacunas confirmadas.
-
-**Nenhuma imagem ou prompt de geração é produzido nesta Fase 5.0.**
-
-## 7. Dependências e compatibilidade técnica
-
-| Dependência | Evidência atual | Consequência para a expansão | Portão antes da implementação |
-|---|---|---|---|
-| Falha automática da missão após semana 8 | Dados declaram janela 8–8; o método atual verifica apenas `week >= week_min`; painel processa missão quando fica devida | Novos eventos e finais pós-missão precisam saber se houve sucesso, falha automática ou tentativa incompleta | Especificar o resultado automático, flags e interação com `final_mission_attempted`; não definir aqui |
-| Pulso determinístico | Código resolve sucesso com estabilidade `>=55` **e** TEC `>=30`; desbloqueio atual aceita estabilidade `>=55` **ou** flag de protocolo em equipe | Atividades/itens não devem introduzir uma segunda rolagem ou prometer sucesso por bônus sem rever o contrato | Confirmar contrato completo de disponibilidade e resultado da Fase 4C; manter o teste determinístico aprovado |
-| Motivação mecânica | Campo e UI existem; fórmula de falha não consulta motivação | Preview/atividade nova precisa apresentar a influência sem criar regra paralela | Aprovar fórmula, bandas, caps e dados de regressão |
-| Aptidões e mentoria | Multiplicadores no JSON e `mentor_affinity` nos dados, não aplicados; mentor bonus zero | Atividades propostas dependem de uma regra comum e seus efeitos atuais podem mudar | Aprovar fórmula, resolução de conflito/stacking e papel do vínculo |
-| Loja/equipamentos | Créditos existem e estágio é faucet; não há inventário/loja | Compra e equipamento exigem estado novo, aplicação de efeitos e UI | Aprovar modelo de item, preços, fontes, sinks, limites e save fields |
-| Save em disco | Nenhum serviço de serialização/carregamento foi localizado nos scripts examinados | Novas flags, itens, mentoria e conteúdo podem perder-se ou falhar em migração | Definir schema/versionamento, validação, migração e continuidade de seed antes de conteúdo persistente |
-| Seis novos eventos | Serviço valida exatamente 8 eventos ativos | Acrescentar eventos ao arquivo atual sem alteração coordenada causa rejeição pelo loader | Escolher composição de arquivos e validação por versão/quantidade; proteger IDs e eventos existentes |
-| Novas personagens falantes | Retratos só são definidos para Hori; `BOND_IDS` é limitado a Hori/Ray/Luppi/instrutor | Secundários podem participar como fala sem relação mecânica, mas retrato e vínculo exigem extensão explícita | Aprovar se terão vínculos próprios; definir fallback e retratos |
-| Novas atividades | UI itera IDs; validador de atividades possui allowlist estrita; categorias e layouts têm estilos próprios | É possível reutilizar cartões e preview, mas campos novos não entram sem mudança coordenada do serviço e apresentação | Fixar o contrato de dados após Fase 4C e mapear categorias/efeitos |
-
-## 8. Plano das subfases
-
-### Fase 5.0 — Especificação (esta entrega)
-
-- Mapear reuso e lacunas.
-- Aprovar escopo, conceitos e portões.
-- Nenhuma mudança de gameplay, dados, UI, testes ou arte.
-
-### Fase 5.1 — Conteúdo narrativo
-
-- Resolver fonte ativa versus dados legado.
-- Confirmar quais dos seis eventos são adições e obter aprovação de outlines, janelas, flags, consequências e voz.
-- Redigir/revisar diálogos em português brasileiro e verificar continuidade/cânone.
-- Dependências: política de missão semana 8, pacing de eventos e aprovação dos secundários.
-
-### Fase 5.2 — Atividades
-
-- Especificar efeitos e requisitos após a fórmula unificada da Fase 4C.
-- Implementar apenas uma atividade por execução de trabalho, com dados/serviço/UI alinhados.
-- Dependências: contratos de motivação, aptidão, mentoria, energia e créditos.
-
-### Fase 5.3 — Progressão e economia
-
-- Definir o menor modelo de aptidões, mentores, motivação, inventário, loja e gastos.
-- Fazer avaliação manual de ganhos/sinks a partir dos valores atuais antes de propor números finais.
-- Dependências: decisões 4C; salvamento versionado; escopo aprovado para equipamento opcional.
-
-### Fase 5.4 — Produção de assets
-
-- Gerar arte original somente depois da aprovação de fichas, direção de arte, resolução e prompts mestres.
-- Revisar cada imagem e seu uso/licença/proveniência antes de integração.
-- Dependências: elenco/personagens e necessidades visuais confirmados.
-
-### Fase 5.5 — Integração
-
-- Integrar em serviços/dados/UI existentes, sem criar segunda fonte de verdade.
-- Preservar Hub inicial, navegação e prioridade narrativa.
-- Dependências: esquema de conteúdo, inventário/save e eventos aprovados.
-
-### Fase 5.6 — Validação
-
-- Plano de testes localizados de serviço, narrativa, save/migração, compra, compatibilidade e interface.
-- Avaliar balanceamento em passagens pequenas, com autorização explícita e limites operacionais definidos.
-- Nenhum teste foi executado como parte desta especificação.
-
-## 9. Decisões que exigem aprovação do autor
-
-1. “Seis eventos” significa seis adicionais aos oito atuais (14 no total) ou seis eventos na expansão incluindo revisão/substituição de conteúdo existente?
-2. Qual fonte narrativa é oficial para Hori: o conjunto de `Hori Draft`, `data/events.json` ou um carregamento composto por rota?
-3. Qual política de cadência é desejada quando mais de um evento fica elegível na mesma semana?
-4. A missão que falha automaticamente depois da semana 8 deve marcar `final_mission_attempted`, criar flag própria ou seguir outro resultado? A integração deve respeitar a decisão final da 4C.
-5. Os conceitos “Lia Moura” e “Nara Vale” são úteis como ponto de partida ou devem ser substituídos? Aprovar nomes, idades, aparência, personalidade e história antes de canonizar.
-6. Ray e Luppi terão vínculos mecânicos próprios com os novos secundários, ou os secundários serão participantes sem barras de relação?
-7. Qual comportamento aprovado de motivação, aptidões e mentoria será a única fórmula de treinamento? Confirmar contrato 4C, não reabrir por esta proposta.
-8. Equipamentos serão permanentes, consumíveis ou equipados? Haverá limite de slots? Qual fonte/sink de créditos atende a campanha sem exigir compras?
-9. A especialização deve permanecer adiada, como recomendado, ou entrar como uma única escolha simples?
-10. Qual formato/versionamento de save aprovado deve conter itens, novas flags e dados da Fase 4C?
-11. Quais retratos/CGs são obrigatórios e quais podem usar os cenários/expressões atuais?
-
-## 10. Critérios de aceite para a Fase 5.0
-
-- [x] Inventário estático de sistemas e arquivos relevantes.
-- [x] Reuso, ausências e incompatibilidades de arquitetura identificados.
-- [x] Dependências da Fase 4C explicitadas sem tentar resolvê-las.
-- [x] Seis conceitos de evento, duas fichas secundárias, duas atividades e três itens propostos como material não canônico.
-- [x] Recursos, fontes/sinks e necessidades de assets planejados sem definir balanceamento final.
-- [x] Subfases pequenas e seus portões descritos.
-- [x] Nenhuma implementação, alteração de gameplay, alteração de dados ou geração de arte executada.
-
-**Validação:** inspeção estática somente. Nenhum teste, simulação, execução do projeto ou geração de imagem foi realizado.
+Não iniciar uma etapa posterior para contornar uma falha da anterior. Não incluir conteúdo adicional ou refatoração geral no mesmo lote.
