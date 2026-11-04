@@ -1,11 +1,27 @@
 # HERO TRAINER — Especificação de Game Design e Arquitetura — Fase 4C.1
 
-**Versão:** proposta 0.1  
+**Versão:** decisões consolidadas 0.2
 **Data:** 2026-11-04  
-**Status:** especificação para revisão e aprovação do autor; implementação não autorizada  
+**Status:** Fase 4C.1 consolidada; decisões prontas para revisão do autor; implementação não autorizada
 **Método:** inspeção estática de documentos, GDScript, JSON e testes. Não foram executados Godot, testes, simulações, builds ou verificações visuais.
 
-> **Convenção:** **[REQUISITO DO AUTOR]** identifica uma decisão já aprovada e não reaberta aqui. **[PROPOSTA]** identifica uma regra operacional recomendada, ainda sujeita à aprovação. Valores de balanceamento são hipóteses, não cânone.
+> **Convenção:** **[REQUISITO DO AUTOR]** identifica uma decisão autoral inviolável. **[DECISÃO 4C.1]** identifica uma escolha de design consolidada após revisão sequencial dos quatro perfis. **[PROPOSTA HISTÓRICA]** identifica alternativas registradas antes da consolidação; não prevalecem sobre as decisões atuais.
+
+## Registro de consolidação da Fase 4C.1
+
+A auditoria e o histórico de propostas das seções seguintes foram preservados. Onde o texto antigo disser “proposta pendente” ou divergir deste registro, prevalecem os documentos de decisão e detalhamento:
+
+- [`12_DECISOES_GAME_DESIGN_FASE_4C1.md`](./12_DECISOES_GAME_DESIGN_FASE_4C1.md) — decisões consolidadas, conciliação dos perfis, justificativas, valores de MVP, riscos e critérios de conclusão.
+- [`13_ESPECIFICACAO_GAME_DESIGN_FASE_4C2.md`](./13_ESPECIFICACAO_GAME_DESIGN_FASE_4C2.md) — regras detalhadas do sistema de treinamento e desenvolvimento, fórmulas, exemplos e critérios de aceitação.
+
+Decisões consolidadas: a missão só expira na transição da semana 8 para a 9, após as três ações e chance de resolução; tentativa, conclusão e prazo são estados distintos. O Pulso só fica disponível quando estabilidade `>=55` **e** TEC `>=30`, que também são ambos necessários para sucesso. Motivação usa as faixas `0–33: 0,90`, `34–66: 1,00`, `67–100: 1,10`; aptidões válidas ficam em `0,85–1,15`; mentoria compatível requer vínculo com instrutor `>=30` e reduz risco em 5 pontos percentuais. A loja MVP usa preços `80/120/160`, itens opcionais de conveniência e um espaço de equipamento ativo. Save/load usa um snapshot JSON versionado com cópia de recuperação e autosave.
+
+As seções abaixo foram originalmente redigidas como proposta 0.1. Seu conteúdo técnico e as recomendações antigas permanecem para rastreabilidade; valores alternativos, inclusive disponibilidade OR do Pulso, itens com `+1` atributo, preços `80/100/120`, fórmulas de risco antigas e alternativas de save mais complexas, estão substituídos quando conflitam com os documentos 12 e 13.
+
+### Histórico
+
+- **0.1:** proposta inicial para revisão; todas as regras operacionais eram recomendações.
+- **0.2:** decisões de 4C.1 consolidadas após revisão sequencial de Game Designer, Economy Designer, Godot Gameplay Scripter e Narrative Designer; especificação 4C.2 iniciada em documento próprio.
 
 ## 1. Resumo executivo
 
@@ -437,8 +453,9 @@ Esta ordem é planejamento, **não autorização para implementar**:
 
 ## 17. Registro de validação e escopo
 
-- Git inicial verificado: branch `main`, commit `5870e30`; `git status --short --untracked-files=all` estava limpo antes da documentação.
+- Git inicial verificado: branch `main`, commit `fb7cdba`; `git status --short --untracked-files=all` estava limpo antes da documentação.
 - Perfis Game Designer, Economy Designer, Godot Gameplay Scripter e Narrative Designer consultados um por vez, sem paralelismo; foram usados como perspectivas, não como autoridade para aprovar decisões do autor.
 - **Execução:** não foi executado teste, comando Godot, simulação, build ou verificação visual. Foram feitas somente consultas Git de leitura para verificar status, branch e último commit, antes e depois da documentação.
-- **Arquivos:** esta entrega deve adicionar somente `docs/11_ESPECIFICACAO_GAME_DESIGN_FASE_4C.md`; não altera código, dados, projeto, captures, `.import`, `.uid` ou documentos anteriores.
-- **Aguardando:** revisão/aprovação do autor antes de qualquer implementação da Fase 4C.2 ou avanço da Parte 5.
+- **Arquivos da entrega consolidada:** `docs/11_ESPECIFICACAO_GAME_DESIGN_FASE_4C.md` foi atualizado; `docs/12_DECISOES_GAME_DESIGN_FASE_4C1.md` e `docs/13_ESPECIFICACAO_GAME_DESIGN_FASE_4C2.md` foram criados. Nenhum código, dado, projeto, captura, `.import` ou `.uid` foi alterado.
+- **Estado final:** as únicas alterações no worktree são esses três documentos; nenhuma alteração preexistente foi descartada ou revertida.
+- **Próximo portão:** revisão do autor dos documentos de decisão 4C.1 e especificação 4C.2 antes de qualquer implementação ou avanço da Parte 5.
