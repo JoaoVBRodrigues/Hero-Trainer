@@ -8,16 +8,16 @@
 
 config_version=5
 
+[accessibility]
+
+reduce_motion=false
+
 [application]
 
 config/name="Hero Trainer"
 run/main_scene="res://scenes/training_dashboard.tscn"
 config/features=PackedStringArray("4.5", "GL Compatibility")
 config/icon="res://icon.svg"
-
-[accessibility]
-
-reduce_motion=false
 
 [autoload]
 
@@ -27,7 +27,6 @@ _mcp_game_helper="*res://addons/godot_ai/runtime/game_helper.gd"
 
 window/size/viewport_width=1280
 window/size/viewport_height=720
-window/size/resizable=true
 
 [editor_plugins]
 
