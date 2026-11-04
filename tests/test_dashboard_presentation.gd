@@ -13,6 +13,7 @@ func suite_name() -> String:
 
 func test_campaign_launch_shows_hub_before_narrative() -> void:
 	var dashboard: Control = DashboardScene.instantiate()
+	dashboard.set("persistence_enabled", false)
 	track(dashboard)
 	var tree: SceneTree = Engine.get_main_loop()
 	tree.root.add_child(dashboard)
@@ -36,6 +37,7 @@ func test_hori_position_modes_preserve_aspect_and_campaign_state() -> void:
 	assert_true(training.load_project_data(), "training data should load")
 
 	var dashboard: Control = DashboardScript.new()
+	dashboard.set("persistence_enabled", false)
 	track(dashboard)
 	dashboard.set("_service", training)
 	dashboard.size = Vector2(1280, 720)
@@ -166,6 +168,7 @@ func test_hub_navigation_and_state_binding() -> void:
 	assert_true(narrative.load_project_data(), "narrative data should load")
 
 	var dashboard: Control = DashboardScript.new()
+	dashboard.set("persistence_enabled", false)
 	track(dashboard)
 	dashboard.set("_service", training)
 	dashboard.set("_narrative_service", narrative)
@@ -319,6 +322,7 @@ func test_status_screen_is_independent_and_reads_campaign_state() -> void:
 	assert_true(narrative.load_project_data(), "narrative data should load")
 
 	var dashboard: Control = DashboardScript.new()
+	dashboard.set("persistence_enabled", false)
 	track(dashboard)
 	dashboard.set("_service", training)
 	dashboard.set("_narrative_service", narrative)
@@ -548,6 +552,7 @@ func test_relationships_screen_tracks_existing_bonds_and_shortcuts() -> void:
 	assert_true(narrative.load_project_data(), "narrative data should load")
 
 	var dashboard: Control = DashboardScript.new()
+	dashboard.set("persistence_enabled", false)
 	track(dashboard)
 	dashboard.set("_service", training)
 	dashboard.set("_narrative_service", narrative)
@@ -775,6 +780,7 @@ func test_training_screen_previews_and_applies_service_results() -> void:
 	assert_true(narrative.load_project_data(), "narrative data should load")
 
 	var dashboard: Control = DashboardScript.new()
+	dashboard.set("persistence_enabled", false)
 	track(dashboard)
 	dashboard.set("_service", training)
 	dashboard.set("_narrative_service", narrative)
@@ -1028,6 +1034,7 @@ func test_ui_motion_feedback_and_navigation_preserve_campaign_state() -> void:
 	assert_true(narrative.load_project_data(), "narrative data should load")
 
 	var dashboard: Control = DashboardScript.new()
+	dashboard.set("persistence_enabled", false)
 	track(dashboard)
 	dashboard.set("_service", training)
 	dashboard.set("_narrative_service", narrative)
@@ -1203,6 +1210,7 @@ func test_window_mode_controls_and_shortcuts_preserve_campaign_state() -> void:
 	var training: TrainingService = TrainingServiceScript.new()
 	assert_true(training.load_project_data(), "training data should load")
 	var dashboard: Control = DashboardScript.new()
+	dashboard.set("persistence_enabled", false)
 	track(dashboard)
 	dashboard.set("_service", training)
 	dashboard.size = Vector2(1280, 720)

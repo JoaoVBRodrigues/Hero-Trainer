@@ -5,7 +5,7 @@
   "resource_cap": 100,
   "reputation_cap": 100,
   "bond_cap": 100,
-  "training_failure_formula": "clamp(0,60,round(max(0,35-energy)*0.9+stress*0.2+injury_level*12-mentor_bonus))",
+  "training_failure_formula": "clamp(0,55,round(max(0,45-energy)*0.7+max(0,stress-20)*0.3)-mentor_bonus)",
   "notes": "Sinais positivos aumentam a variável; negativos reduzem. Dados de demonstração; nenhum custo monetário real ou IA runtime.",
   "activities": [
     {"id": "combat", "label": "Treinamento de combate", "category": "training", "stats_delta": {"pot": 5, "tec": 2}, "resource_delta": {"energy": -15, "stress": 6}, "can_fail": true, "mentor_affinity": "combat"},

@@ -13,13 +13,13 @@
         "name": "Pulso de Contenção",
         "owner": "hori",
         "unlock_condition": {
-          "any": [
+          "all": [
             { "path": "route_state.core_stability", "op": ">=", "value": 55 },
-            { "path": "flags.hori_core_team_protocol", "op": "==", "value": true }
+            { "path": "stats.tec", "op": ">=", "value": 30 }
           ]
         },
-        "effect": "Disponível apenas na Etapa 2. Permite a Hori usar o núcleo de forma controlada para estabilizar a Ruptura diretamente. Alto risco / alto ganho: sucesso reduz drasticamente o dano à equipe e aumenta trusted_network; falha reduz core_stability temporariamente e aumenta echo_pressure.",
-        "success_chance_note": "Determinado pelo motor com base em core_stability e tec no momento da escolha; não detalhado aqui para evitar código executável no JSON."
+        "effect": "Disponível apenas na Etapa 2 quando estabilidade do núcleo é pelo menos 55 e Técnica é pelo menos 30. O resultado é determinístico e não usa sorteio.",
+        "success_chance_note": "Sucesso determinístico quando core_stability >= 55 e tec >= 30."
       },
       "stages": [
         {
@@ -79,7 +79,7 @@
           "id": "observatory_stage2_core_action",
           "title": "Ação central",
           "objective": "Decidir como lidar com a Ruptura ativa: estabilizar com o núcleo de Hori, priorizar a extração dos pesquisadores, ou dividir a equipe.",
-          "requirements_note": "A opção 'containment_pulse' só aparece se a habilidade especial estiver desbloqueada (ver special_ability).",
+          "requirements_note": "O Pulso só aparece com estabilidade do núcleo >= 55 e TEC >= 30; os dois valores são exibidos antes da escolha.",
           "choices": [
             {
               "id": "stabilize_with_core",
@@ -128,7 +128,7 @@
               "id": "containment_pulse",
               "label": "[Habilidade especial] Usar o Pulso de Contenção.",
               "requirement": { "path": "flags.hori_containment_pulse_unlocked", "op": "==", "value": true },
-              "expected_result": "Alto risco, alto ganho — ver special_ability.",
+              "expected_result": "Sucesso determinístico com estabilidade do núcleo >= 55 e TEC >= 30; a opção fica indisponível sem ambos os requisitos.",
               "effects_success": {
                 "flags_set": { "stage2_pulse_success": true },
                 "route_state_delta": { "trusted_network": 10 },
@@ -155,11 +155,11 @@
               "requirement": { "path": "route_state.trusted_network", "op": ">=", "value": 30 },
               "expected_result": "Saída organizada, sem feridos, se a equipe já estiver em boas condições.",
               "effects_success": {
-                "flags_set": { "final_mission_success": true, "final_mission_attempted": true },
+                "flags_set": {},
                 "resources_delta": { "reputation": 4 }
               },
               "effects_failure_recoverable": {
-                "flags_set": { "final_mission_attempted": true, "stage3_minor_injury": true },
+                "flags_set": { "stage3_minor_injury": true },
                 "resources_delta": { "stress": 5 }
               }
             },
@@ -169,11 +169,11 @@
               "requirement": { "path": "stats.res", "op": ">=", "value": 30 },
               "expected_result": "Equipe sai protegida, Hori absorve mais do custo físico/emocional.",
               "effects_success": {
-                "flags_set": { "final_mission_success": true, "final_mission_attempted": true },
+                "flags_set": {},
                 "route_state_delta": { "core_stability": -5 }
               },
               "effects_failure_recoverable": {
-                "flags_set": { "final_mission_attempted": true, "stage3_costly_exit": true },
+                "flags_set": { "stage3_costly_exit": true },
                 "route_state_delta": { "core_stability": -10 }
               }
             },
@@ -183,19 +183,19 @@
               "requirement": { "path": "resources.reputation", "op": ">=", "value": 20 },
               "expected_result": "Extração mais segura, mas aumenta a exposição institucional de Hori.",
               "effects_success": {
-                "flags_set": { "final_mission_success": true, "final_mission_attempted": true },
+                "flags_set": {},
                 "resources_delta": { "reputation": 2 }
               },
               "effects_failure_recoverable": {
-                "flags_set": { "final_mission_attempted": true, "stage3_institutional_exposure": true }
+                "flags_set": { "stage3_institutional_exposure": true }
               }
             }
           ],
-          "flags_persistent": ["final_mission_success", "final_mission_attempted"]
+          "flags_persistent": []
         }
       ],
-      "failure_policy": "Nenhuma opção de etapa resulta em fracasso irreparável; toda falha é recuperável e aplicada via effects_failure_recoverable, preservando flags_persistent de final_mission_attempted mesmo quando final_mission_success não é atingido.",
-      "continuity_check": "Preparo (atributos/route_state) e relações (bonds) determinam requisitos e resultados; nenhuma etapa depende de rolagem aleatória isolada sem base em decisões anteriores."
+      "failure_policy": "Nenhuma opção de etapa resulta em fracasso irrecuperável. A primeira escolha válida marca a tentativa; a terceira etapa marca conclusão, resolução e sucesso conforme o resultado determinístico. O prazo é aplicado somente ao avançar da semana 8 para a 9.",
+      "continuity_check": "Preparo (atributos/route_state) e relações (bonds) determinam requisitos e resultados; nenhuma etapa depende de rolagem aleatória isolada. A expiração não cria tentativa fictícia."
     }
   ]
 }

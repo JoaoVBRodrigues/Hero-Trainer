@@ -2,10 +2,10 @@
 
 **Versão:** 1.0  
 **Data:** 2026-11-04  
-**Status:** decisões consolidadas pela coordenação, prontas para revisão do autor; implementação não autorizada  
+**Status:** decisões consolidadas e autorizadas para implementação em etapas; progresso e validação registrados em [14_IMPLEMENTACAO_FASE_4C.md](./14_IMPLEMENTACAO_FASE_4C.md)  
 **Escopo:** missão da semana 8, Pulso de Contenção, princípios de treinamento, economia MVP e save/load MVP.
 
-> **Certeza:** requisitos do autor são obrigatórios. As decisões abaixo foram escolhidas após as revisões sequenciais dos quatro perfis e são a baseline de design para detalhamento/implementação, não fatos de cânone. Valores de gameplay podem ser reavaliados após implementação e playtest autorizado.
+> **Certeza:** requisitos do autor são obrigatórios. As decisões abaixo foram escolhidas após as revisões sequenciais dos quatro perfis e são a baseline de design para detalhamento/implementação, não fatos de cânone. Valores de gameplay podem ser reavaliados após implementação e playtest autorizado. O registro de implementação não substitui esta baseline nem afirma resultados de testes não executados.
 
 ## 1. Resumo das decisões finais
 
@@ -152,7 +152,7 @@ A 4C.2 registra a especificação detalhada do sistema de treinamento e desenvol
 - [x] Valores numéricos de baseline e contratos de missão/economia/save registrados.
 - [x] Dependências arquiteturais e riscos da Parte 5 identificados.
 - [x] Nenhuma implementação, teste runtime ou simulação executada.
-- [ ] Revisão/aceite do autor — necessário antes de implementar qualquer sistema.
+- [x] Autorização do autor para implementação incremental recebida; validação runtime continua sujeita a autorização específica.
 
 ## 8. Verificações desta etapa
 
@@ -170,3 +170,7 @@ A 4C.2 registra a especificação detalhada do sistema de treinamento e desenvol
 - Permitir revenda/refund ou múltiplos slots no MVP.
 - Requerer um log/journal completo, múltiplos slots de save, telemetria ou sistema de replay antes de existir necessidade funcional.
 - Resolver prazo, fórmula e compra dentro do Dashboard, duplicando regra de serviço.
+
+## 10. Registro posterior de implementação
+
+A implementação foi autorizada após a consolidação desta baseline. A evolução técnica, os arquivos alterados, os testes preparados e as limitações de validação estática estão registrados em [14_IMPLEMENTACAO_FASE_4C.md](./14_IMPLEMENTACAO_FASE_4C.md). As regras numéricas e de design deste documento permanecem a referência; esta nota não converte propostas históricas em cânone.

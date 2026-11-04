@@ -37,6 +37,7 @@ func test_training_regressions() -> void:
 	_test_seeded_sequences_are_reproducible(service)
 	_test_rng_state_continues_with_campaign(service)
 	_test_non_failing_activities_do_not_draw(service)
+	_test_phase4c_modifiers_and_equipment(service)
 
 
 func _test_configuration_comes_from_json(service: TrainingService) -> void:
@@ -56,7 +57,7 @@ func _test_activity_effects(service: TrainingService) -> void:
 	var state: TrainingState = service.create_initial_state()
 	var result: TrainingPreview = service.apply_activity(state, &"combat")
 	_check(result.is_valid, "combat applies successfully")
-	_check(state.stats[&"pot"] == 35, "combat increases power by 5")
+	_check(state.stats[&"pot"] == 36, "combat applies aptitude and motivation to power gain")
 	_check(state.stats[&"tec"] == 30, "combat increases technique by 2")
 	_check(state.energy == 60, "combat consumes 15 energy")
 	_check(state.stress == 18, "combat adds 6 stress")
@@ -374,15 +375,15 @@ func _test_failure_chance_bounds(service: TrainingService) -> void:
 	state.stress = 100
 	var highest_valid_risk: TrainingPreview = service.preview_activity(state, &"lab")
 	_check(
-		highest_valid_risk.failure_chance_percent == 43,
-		"rounding before clamping yields the highest reachable valid risk"
+		highest_valid_risk.failure_chance_percent == 49,
+		"low energy and high stress produce the approved 49% example"
 	)
 	_check(
-		service._calculate_failure_chance(0, 200) == 60,
-		"formula applies the declared 60% upper clamp"
+		service._calculate_failure_chance(0, 200) == 55,
+		"formula applies the declared 55% upper clamp"
 	)
 	_check(
-		service._calculate_failure_chance(35, 0) == 0,
+		service._calculate_failure_chance(100, 20) == 0,
 		"formula applies the declared 0% lower clamp"
 	)
 
@@ -434,8 +435,8 @@ func _test_failure_probability_and_rng_advancement(service: TrainingService) -> 
 	state.energy = 10
 	state.stress = 100
 	var preview: TrainingPreview = service.preview_activity(state, &"lab")
-	_check(preview.failure_chance_percent == 43, "low energy and high stress raise failure risk")
-	_check(preview.success_chance_percent == 57, "displayed probabilities total 100%")
+	_check(preview.failure_chance_percent == 49, "low energy and high stress raise failure risk")
+	_check(preview.success_chance_percent == 51, "displayed probabilities total 100%")
 
 	var expected_rng := RandomNumberGenerator.new()
 	expected_rng.seed = state.rng_seed
@@ -531,6 +532,71 @@ func _test_non_failing_activities_do_not_draw(service: TrainingService) -> void:
 			state.rng_state == before_rng_state,
 			"%s does not consume a random draw" % activity_id
 		)
+
+
+func _test_phase4c_modifiers_and_equipment(service: TrainingService) -> void:
+	var low_motivation_state: TrainingState = service.create_initial_state()
+	low_motivation_state.motivation = 33
+	var low_preview: TrainingPreview = service.preview_activity(
+		low_motivation_state,
+		&"combat"
+	)
+	_check(low_preview.motivation_multiplier == 0.9, "motivation 33 uses the low multiplier")
+	_check(low_preview.attribute_gains[&"pot"] == 5, "low motivation affects calculated attribute gain")
+
+	var high_motivation_state: TrainingState = service.create_initial_state()
+	high_motivation_state.motivation = 67
+	var high_preview: TrainingPreview = service.preview_activity(
+		high_motivation_state,
+		&"combat"
+	)
+	_check(high_preview.motivation_multiplier == 1.1, "motivation 67 uses the high multiplier")
+	_check(high_preview.attribute_gains[&"pot"] == 6, "high motivation and aptitude round once")
+
+	var mentor_state: TrainingState = service.create_initial_state()
+	mentor_state.energy = 20
+	mentor_state.stress = 60
+	mentor_state.bonds[&"instructor"] = 30
+	var mentored_preview: TrainingPreview = service.preview_activity(
+		mentor_state,
+		&"lab"
+	)
+	_check(mentored_preview.base_failure_chance_percent == 30, "base risk follows the new formula")
+	_check(mentored_preview.failure_chance_percent == 25, "eligible mentor reduces risk by five points")
+
+	var economy := EconomyService.new()
+	economy.set_actions_per_week(service.get_actions_per_week())
+	var notebook_state: TrainingState = service.create_initial_state()
+	notebook_state.credits = 200
+	_check(
+		economy.purchase_item(notebook_state, &"training_notebook").is_empty(),
+		"notebook purchase succeeds with sufficient credits"
+	)
+	_check(
+		economy.equip_item(notebook_state, &"training_notebook").is_empty(),
+		"notebook can be equipped before the first weekly action"
+	)
+	_check(
+		service.get_activity_energy_cost(&"combat", notebook_state) == 13,
+		"notebook reduces training energy cost by two"
+	)
+	notebook_state.actions_remaining -= 1
+	_check(
+		not economy.equip_item(notebook_state, &"").is_empty(),
+		"equipment cannot be changed after the first weekly action"
+	)
+
+	var recovery_state: TrainingState = service.create_initial_state()
+	recovery_state.equipped_item_id = &"recovery_kit"
+	recovery_state.inventory.append(&"recovery_kit")
+	var rest_result: TrainingPreview = service.apply_activity(recovery_state, &"rest")
+	_check(rest_result.is_valid and recovery_state.energy == 100, "recovery kit adds five energy within cap")
+
+	var focus_state: TrainingState = service.create_initial_state()
+	focus_state.equipped_item_id = &"focus_aid"
+	focus_state.inventory.append(&"focus_aid")
+	var focus_preview: TrainingPreview = service.preview_activity(focus_state, &"combat")
+	_check(focus_preview.stress_delta == 5, "focus aid reduces training stress by one")
 
 
 func _seed_with_safe_training_draws() -> int:

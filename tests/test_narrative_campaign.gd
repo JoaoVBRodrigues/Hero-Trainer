@@ -76,8 +76,20 @@ func test_mission_outcomes_and_pulse_thresholds() -> void:
 	assert_eq(state.mission_stage, 0, "preview should not advance mission")
 	assert_true(narrative.apply_mission_choice(state, &"fast_advance").is_valid, "stage one should apply")
 	assert_eq(state.mission_stage, 1, "stage one should advance")
-	assert_true(narrative.get_mission_choice_ids(state).has(&"containment_pulse"), "initial core state unlocks Pulse")
+	assert_true(state.flags[&"final_mission_attempted"], "first choice records a real attempt")
+	assert_false(
+		narrative.get_mission_choice_ids(state).has(&"containment_pulse"),
+		"Pulse stays hidden until both approved thresholds are met"
+	)
+	assert_true(
+		narrative.pulse_requirement_message(state).contains("28/30"),
+		"Pulse preview reports the current Technique value"
+	)
 	state.stats[&"tec"] = NarrativeService.PULSE_MIN_TECHNIQUE
+	assert_true(
+		narrative.get_mission_choice_ids(state).has(&"containment_pulse"),
+		"Pulse unlocks when both thresholds are met"
+	)
 	var pulse: NarrativeResult = narrative.apply_mission_choice(state, &"containment_pulse")
 	assert_true(
 		pulse.is_valid and pulse.outcome == &"success",
@@ -88,20 +100,49 @@ func test_mission_outcomes_and_pulse_thresholds() -> void:
 	var recoverable_state: TrainingState = training.create_initial_state()
 	recoverable_state.week = 8
 	recoverable_state.mission_stage = 1
-	recoverable_state.route_state[&"core_stability"] = 54
+	recoverable_state.flags[&"final_mission_attempted"] = true
+	recoverable_state.route_state[&"core_stability"] = 39
 	recoverable_state.stats[&"tec"] = 29
-	recoverable_state.flags[&"hori_core_team_protocol"] = true
 	var recoverable: NarrativeResult = narrative.apply_mission_choice(
 		recoverable_state,
-		&"containment_pulse"
+		&"stabilize_with_core"
 	)
 	assert_true(
 		recoverable.is_valid and recoverable.outcome == &"failure_recoverable",
-		"unmet Pulse thresholds produce recoverable failure"
+		"unmet core-action requirement produces recoverable failure"
 	)
-	assert_eq(recoverable_state.route_state[&"core_stability"], 42, "failure effects lower stability")
-	assert_eq(recoverable_state.route_state[&"echo_pressure"], 28, "failure effects raise echo pressure")
 	assert_eq(recoverable_state.mission_stage, 2, "recoverable failure advances the mission")
+
+	var missed_deadline: TrainingState = training.create_initial_state()
+	missed_deadline.week = 8
+	missed_deadline.actions_remaining = 0
+	assert_true(
+		narrative.expire_mission_by_deadline(missed_deadline),
+		"deadline is recorded at the end of week eight"
+	)
+	assert_false(
+		missed_deadline.flags[&"final_mission_attempted"],
+		"deadline does not fabricate a mission attempt"
+	)
+	assert_true(
+		missed_deadline.flags[&"final_mission_failed_by_deadline"]
+		and missed_deadline.flags[&"final_mission_resolved"],
+		"deadline records a resolved non-completion"
+	)
+	assert_false(
+		narrative.expire_mission_by_deadline(missed_deadline),
+		"deadline resolution is idempotent"
+	)
+	assert_true(training.advance_week(missed_deadline), "campaign advances after the deadline is resolved")
+	assert_true(
+		narrative.validate_campaign_state(missed_deadline).is_empty(),
+		"resolved campaign state remains valid in week nine"
+	)
+	assert_eq(
+		narrative.resolve_ending(missed_deadline).get("id"),
+		"hori_overburdened",
+		"missed deadline resolves to the fallback ending"
+	)
 
 
 func test_event_windows_priority_and_limit_clamps() -> void:
@@ -133,6 +174,8 @@ func test_event_windows_priority_and_limit_clamps() -> void:
 
 	var priority_state: TrainingState = training.create_initial_state()
 	priority_state.week = 12
+	priority_state.flags[&"final_mission_failed_by_deadline"] = true
+	priority_state.flags[&"final_mission_resolved"] = true
 	priority_state.route_state[&"echo_pressure"] = 25
 	assert_eq(
 		narrative.get_next_event(priority_state).get("id"),
@@ -193,8 +236,12 @@ func test_all_endings_are_reachable() -> void:
 	assert_true(narrative.load_project_data(), "narrative data should load")
 
 	var team_state: TrainingState = training.create_initial_state()
+	team_state.week = 8
 	team_state.flags[&"final_mission_attempted"] = true
+	team_state.flags[&"final_mission_completed"] = true
 	team_state.flags[&"final_mission_success"] = true
+	team_state.flags[&"final_mission_resolved"] = true
+	team_state.mission_stage = 3
 	team_state.axes[&"solidarity"] = 15
 	team_state.bonds[&"ray"] = 45
 	team_state.bonds[&"luppi"] = 45
@@ -205,8 +252,12 @@ func test_all_endings_are_reachable() -> void:
 	)
 
 	var career_state: TrainingState = training.create_initial_state()
+	career_state.week = 8
 	career_state.flags[&"final_mission_attempted"] = true
+	career_state.flags[&"final_mission_completed"] = true
 	career_state.flags[&"final_mission_success"] = true
+	career_state.flags[&"final_mission_resolved"] = true
+	career_state.mission_stage = 3
 	career_state.stats[&"pot"] = 55
 	career_state.stats[&"res"] = 50
 	career_state.reputation = 35
@@ -217,7 +268,11 @@ func test_all_endings_are_reachable() -> void:
 	)
 
 	var independent_state: TrainingState = training.create_initial_state()
+	independent_state.week = 8
 	independent_state.flags[&"final_mission_attempted"] = true
+	independent_state.flags[&"final_mission_completed"] = true
+	independent_state.flags[&"final_mission_resolved"] = true
+	independent_state.mission_stage = 3
 	independent_state.axes[&"autonomy"] = 15
 	assert_eq(
 		narrative.resolve_ending(independent_state).get("id"),
@@ -226,7 +281,9 @@ func test_all_endings_are_reachable() -> void:
 	)
 
 	var fallback_state: TrainingState = training.create_initial_state()
-	fallback_state.flags[&"final_mission_attempted"] = true
+	fallback_state.week = 9
+	fallback_state.flags[&"final_mission_failed_by_deadline"] = true
+	fallback_state.flags[&"final_mission_resolved"] = true
 	assert_eq(
 		narrative.resolve_ending(fallback_state).get("id"),
 		"hori_overburdened",
@@ -240,8 +297,12 @@ func test_endings_and_full_campaign_completion() -> void:
 	var narrative: NarrativeService = _new_narrative_service(training)
 	assert_true(narrative.load_project_data(), "narrative data should load")
 	var team_state: TrainingState = training.create_initial_state()
+	team_state.week = 8
 	team_state.flags[&"final_mission_attempted"] = true
+	team_state.flags[&"final_mission_completed"] = true
 	team_state.flags[&"final_mission_success"] = true
+	team_state.flags[&"final_mission_resolved"] = true
+	team_state.mission_stage = 3
 	team_state.axes[&"solidarity"] = 15
 	team_state.bonds[&"ray"] = 45
 	team_state.bonds[&"luppi"] = 45
@@ -279,6 +340,8 @@ func test_endings_and_full_campaign_completion() -> void:
 	assert_eq(state.week, 16, "campaign should complete all 16 weeks")
 	assert_eq(state.mission_stage, 3, "campaign should complete all mission stages")
 	assert_true(state.flags[&"final_mission_attempted"], "campaign should record mission attempt")
+	assert_true(state.flags[&"final_mission_completed"], "campaign should record mission completion")
+	assert_true(state.flags[&"final_mission_resolved"], "campaign should record mission resolution")
 	assert_true(not narrative.resolve_ending(state).is_empty(), "campaign should resolve an ending")
 	for event_id: StringName in narrative.get_event_ids():
 		assert_true(
@@ -315,4 +378,6 @@ func _state_snapshot(state: TrainingState) -> Dictionary:
 		"credits": state.credits,
 		"reputation": state.reputation,
 		"bonds": state.bonds.duplicate(),
+		"inventory": state.inventory.duplicate(),
+		"equipped_item_id": state.equipped_item_id,
 	}

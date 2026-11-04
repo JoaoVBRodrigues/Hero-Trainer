@@ -24,6 +24,13 @@ const ROUTE_STATE_LIMITS: Dictionary[StringName, Vector2i] = {
 	&"honesty_to_friends": Vector2i(0, 100),
 }
 const ROUTE_STATE_BOOLEAN_IDS: Array[StringName] = [&"identification_aids"]
+const MISSION_FLAG_IDS: Array[StringName] = [
+	&"final_mission_attempted",
+	&"final_mission_completed",
+	&"final_mission_success",
+	&"final_mission_failed_by_deadline",
+	&"final_mission_resolved",
+]
 
 var week: int = 1
 var actions_remaining: int = 0
@@ -48,7 +55,13 @@ var route_state: Dictionary[StringName, Variant] = {
 	&"identification_aids_progress": 0,
 	&"honesty_to_friends": 0,
 }
-var flags: Dictionary[StringName, bool] = {}
+var flags: Dictionary[StringName, bool] = {
+	&"final_mission_attempted": false,
+	&"final_mission_completed": false,
+	&"final_mission_success": false,
+	&"final_mission_failed_by_deadline": false,
+	&"final_mission_resolved": false,
+}
 var mission_stage: int = 0
 var ending_id: StringName = &""
 var energy: int = 0
@@ -59,6 +72,8 @@ var reputation: int = 0
 var bonds: Dictionary[StringName, int] = {}
 var rng_seed: int = 0
 var rng_state: int = 0
+var inventory: Array[StringName] = []
+var equipped_item_id: StringName = &""
 
 
 func duplicate_state() -> TrainingState:
@@ -79,6 +94,8 @@ func duplicate_state() -> TrainingState:
 	copy.bonds = bonds.duplicate()
 	copy.rng_seed = rng_seed
 	copy.rng_state = rng_state
+	copy.inventory = inventory.duplicate()
+	copy.equipped_item_id = equipped_item_id
 	return copy
 
 
@@ -99,3 +116,5 @@ func copy_from(source: TrainingState) -> void:
 	bonds = source.bonds.duplicate()
 	rng_seed = source.rng_seed
 	rng_state = source.rng_state
+	inventory = source.inventory.duplicate()
+	equipped_item_id = source.equipped_item_id

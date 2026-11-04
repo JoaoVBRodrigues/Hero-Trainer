@@ -4,7 +4,7 @@ extends RefCounted
 const CHARACTER_DATA_PATH: String = "res://Hero_Trainer_Kit_v02/data/characters.json"
 const ACTIVITIES_DATA_PATH: String = "res://Hero_Trainer_Kit_v02/data/activities.json"
 const TRAINING_FAILURE_FORMULA: String = (
-	"clamp(0,60,round(max(0,35-energy)*0.9+stress*0.2+injury_level*12-mentor_bonus))"
+	"clamp(0,55,round(max(0,45-energy)*0.7+max(0,stress-20)*0.3)-mentor_bonus)"
 )
 const RESOURCE_KEY_MAP: Dictionary[StringName, StringName] = {
 	&"energy": &"energy",
@@ -13,11 +13,19 @@ const RESOURCE_KEY_MAP: Dictionary[StringName, StringName] = {
 	&"credits": &"credits",
 	&"reputation": &"reputation",
 }
-const MAX_FAILURE_CHANCE_PERCENT: int = 60
-const PLACEHOLDER_INJURY_LEVEL: int = 0
-const PLACEHOLDER_MENTOR_BONUS: int = 0
+const MAX_FAILURE_CHANCE_PERCENT: int = 55
+const MAX_ATTRIBUTE_GAIN_PER_ACTION: int = 12
+const MOTIVATION_LOW_MAX: int = 33
+const MOTIVATION_NEUTRAL_MAX: int = 66
+const MENTOR_BOND_THRESHOLD: int = 30
+const MENTOR_RISK_REDUCTION: int = 5
+const TRAINING_ITEM_ENERGY_REDUCTION: int = 2
+const TRAINING_ITEM_MIN_ENERGY_COST: int = 8
+const FOCUS_ITEM_STRESS_REDUCTION: int = 1
+const RECOVERY_ITEM_ENERGY_BONUS: int = 5
 
 var _activities: Dictionary[StringName, Dictionary] = {}
+var _aptitudes: Dictionary[StringName, float] = {}
 var _activity_labels: Dictionary[StringName, String] = {}
 var _activity_ids: Array[StringName] = []
 var _initial_state: TrainingState
@@ -75,12 +83,34 @@ func get_activity_category(activity_id: StringName) -> String:
 	return String(_activities[activity_id]["category"])
 
 
-func get_activity_energy_cost(activity_id: StringName) -> int:
+func get_activity_energy_cost(
+	activity_id: StringName,
+	state: TrainingState = null
+) -> int:
 	if not _activities.has(activity_id):
 		push_error("Atividade desconhecida: %s." % activity_id)
 		return 0
 	var resource_delta: Dictionary = _activities[activity_id]["resource_delta"]
-	return maxi(0, -int(resource_delta.get("energy", 0)))
+	var cost: int = maxi(0, -int(resource_delta.get("energy", 0)))
+	if (
+		state != null
+		and _activities[activity_id]["category"] == "training"
+		and state.equipped_item_id == &"training_notebook"
+	):
+		cost = maxi(TRAINING_ITEM_MIN_ENERGY_COST, cost - TRAINING_ITEM_ENERGY_REDUCTION)
+	return cost
+
+
+func get_motivation_multiplier(motivation: int) -> float:
+	if motivation <= MOTIVATION_LOW_MAX:
+		return 0.90
+	if motivation <= MOTIVATION_NEUTRAL_MAX:
+		return 1.0
+	return 1.10
+
+
+func get_aptitude_multiplier(activity_id: StringName) -> float:
+	return _aptitudes.get(activity_id, 1.0)
 
 
 func get_bond_ids() -> Array[StringName]:
@@ -388,8 +418,53 @@ func load_data(character_data: Variant, activities_data: Variant) -> bool:
 	if loaded_ids.is_empty():
 		push_error("activities.json precisa definir ao menos uma atividade.")
 		return false
+	var aptitudes_value: Variant = character.get("aptitudes")
+	if typeof(aptitudes_value) != TYPE_DICTIONARY:
+		push_error("As aptidões de Hori precisam ser um objeto.")
+		return false
+	var aptitudes_data: Dictionary = aptitudes_value
+	var loaded_aptitudes: Dictionary[StringName, float] = {}
+	for aptitude_key: Variant in aptitudes_data:
+		if typeof(aptitude_key) != TYPE_STRING:
+			push_error("Cada aptidão de Hori precisa usar um ID textual.")
+			return false
+		var aptitude_id := StringName(aptitude_key)
+		if (
+			not loaded_activities.has(aptitude_id)
+			or loaded_activities[aptitude_id]["category"] != "training"
+		):
+			push_error("Aptidão de Hori referencia uma atividade de treino desconhecida: %s." % aptitude_id)
+			return false
+		var aptitude_value: Variant = aptitudes_data[aptitude_key]
+		if typeof(aptitude_value) not in [TYPE_INT, TYPE_FLOAT]:
+			push_error("A aptidão '%s' precisa ser numérica." % aptitude_id)
+			return false
+		var aptitude: float = float(aptitude_value)
+		if aptitude < 0.85 or aptitude > 1.15:
+			push_error("A aptidão '%s' de Hori está fora do intervalo 0,85–1,15." % aptitude_id)
+			return false
+		loaded_aptitudes[aptitude_id] = aptitude
+	for activity_id: StringName in loaded_ids:
+		var activity: Dictionary = loaded_activities[activity_id]
+		if activity["category"] != "training":
+			continue
+		var activity_maximum_gain: int = 0
+		var stats_delta: Dictionary = activity["stats_delta"]
+		for stat_key: String in stats_delta:
+			var base_gain: int = int(stats_delta[stat_key])
+			if base_gain <= 0:
+				push_error("Treino '%s' deve conceder apenas ganhos positivos de atributo." % activity_id)
+				return false
+			var worst_case_gain: int = roundi(base_gain * 1.15 * 1.10)
+			activity_maximum_gain += worst_case_gain
+		if activity_maximum_gain > MAX_ATTRIBUTE_GAIN_PER_ACTION:
+			push_error("Treino '%s' excede o limite de ganho de atributo por ação." % activity_id)
+			return false
+		if not loaded_aptitudes.has(activity_id):
+			loaded_aptitudes[activity_id] = 1.0
 
 	_activities = loaded_activities
+	_aptitudes = loaded_aptitudes
 	_activity_labels = loaded_labels
 	_activity_ids = loaded_ids
 	_initial_state = initial_state
@@ -400,6 +475,8 @@ func load_data(character_data: Variant, activities_data: Variant) -> bool:
 	_reputation_cap = reputation_cap
 	_bond_cap = bond_cap
 	_initial_state.actions_remaining = _actions_per_week
+	for mission_flag: StringName in TrainingState.MISSION_FLAG_IDS:
+		initial_state.flags[mission_flag] = false
 	return true
 
 
@@ -444,15 +521,54 @@ func preview_activity(
 	var activity: Dictionary = _activities[activity_id]
 	preview.activity_id = activity_id
 	preview.can_fail = bool(activity["can_fail"])
+	preview.equipment_id = state.equipped_item_id
+	preview.energy_cost = get_activity_energy_cost(activity_id, state)
+	preview.stress_delta = int(activity["resource_delta"].get("stress", 0))
+	if (
+		activity["category"] == "training"
+		and state.equipped_item_id == &"focus_aid"
+	):
+		preview.stress_delta = maxi(
+			0,
+			preview.stress_delta - FOCUS_ITEM_STRESS_REDUCTION
+		)
+	if activity["category"] == "training":
+		preview.aptitude_multiplier = get_aptitude_multiplier(activity_id)
+		preview.motivation_multiplier = get_motivation_multiplier(state.motivation)
+		preview.mentor_available = (
+			int(state.bonds.get(&"instructor", 0)) >= MENTOR_BOND_THRESHOLD
+			and activity["mentor_affinity"] != null
+			and not String(activity["mentor_affinity"]).is_empty()
+		)
+		var stats_delta: Dictionary = activity["stats_delta"]
+		for stat_key: String in stats_delta:
+			var stat_id := StringName(stat_key)
+			var calculated_gain: int = roundi(
+				int(stats_delta[stat_key])
+				* preview.aptitude_multiplier
+				* preview.motivation_multiplier
+			)
+			var effective_gain: int = mini(
+				calculated_gain,
+				_attribute_cap - int(state.stats[stat_id])
+			)
+			preview.calculated_attribute_gains[stat_id] = calculated_gain
+			preview.attribute_gains[stat_id] = maxi(0, effective_gain)
 	if preview.can_fail:
+		preview.base_failure_chance_percent = _calculate_failure_chance(
+			state.energy,
+			state.stress,
+			0
+		)
 		preview.failure_chance_percent = _calculate_failure_chance(
 			state.energy,
-			state.stress
+			state.stress,
+			MENTOR_RISK_REDUCTION if preview.mentor_available else 0
 		)
 		preview.success_chance_percent = (
 			100 - preview.failure_chance_percent
 		)
-	var energy_cost: int = get_activity_energy_cost(activity_id)
+	var energy_cost: int = preview.energy_cost
 	if state.energy < energy_cost:
 		var missing_energy: int = energy_cost - state.energy
 		preview.message = (
@@ -494,23 +610,31 @@ func _build_activity_result(
 	preview: TrainingPreview
 ) -> TrainingState:
 	var next_state: TrainingState = state.duplicate_state()
-	var stats_delta: Dictionary = activity["stats_delta"]
 	if apply_attribute_gains:
-		for stat_id: StringName in TrainingState.ATTRIBUTE_IDS:
-			var delta_key: String = String(stat_id)
-			if stats_delta.has(delta_key):
-				next_state.stats[stat_id] = clampi(
-					next_state.stats[stat_id] + int(stats_delta[delta_key]),
-					0,
-					_attribute_cap
-				)
+		for stat_id: StringName in preview.attribute_gains:
+			next_state.stats[stat_id] = clampi(
+				next_state.stats[stat_id] + preview.attribute_gains[stat_id],
+				0,
+				_attribute_cap
+			)
 
 	var resource_delta: Dictionary = activity["resource_delta"]
 	for json_key: String in resource_delta:
 		var data_key: StringName = StringName(json_key)
 		var state_key: StringName = RESOURCE_KEY_MAP[data_key]
 		var changed_value: int = _get_resource_value(next_state, state_key)
-		changed_value += int(resource_delta[json_key])
+		var effective_delta: int = int(resource_delta[json_key])
+		if activity["category"] == "training" and data_key == &"energy":
+			effective_delta = -preview.energy_cost
+		elif activity["category"] == "training" and data_key == &"stress":
+			effective_delta = preview.stress_delta
+		elif (
+			preview.activity_id == &"rest"
+			and data_key == &"energy"
+			and state.equipped_item_id == &"recovery_kit"
+		):
+			effective_delta += RECOVERY_ITEM_ENERGY_BONUS
+		changed_value += effective_delta
 		if state_key == &"credits":
 			if changed_value < 0:
 				preview.message = (
@@ -542,14 +666,20 @@ func _build_activity_result(
 	return next_state
 
 
-func _calculate_failure_chance(energy: int, stress: int) -> int:
+func _calculate_failure_chance(
+	energy: int,
+	stress: int,
+	mentor_bonus: int = 0
+) -> int:
 	var raw_chance: float = (
-		maxf(0.0, 35.0 - float(energy)) * 0.9
-		+ float(stress) * 0.2
-		+ float(PLACEHOLDER_INJURY_LEVEL) * 12.0
-		- float(PLACEHOLDER_MENTOR_BONUS)
+		maxf(0.0, 45.0 - float(energy)) * 0.7
+		+ maxf(0.0, float(stress) - 20.0) * 0.3
 	)
-	return clampi(roundi(raw_chance), 0, MAX_FAILURE_CHANCE_PERCENT)
+	return clampi(
+		roundi(raw_chance) - mentor_bonus,
+		0,
+		MAX_FAILURE_CHANCE_PERCENT
+	)
 
 
 func apply_activity(state: TrainingState, activity_id: StringName) -> TrainingPreview:
@@ -558,7 +688,7 @@ func apply_activity(state: TrainingState, activity_id: StringName) -> TrainingPr
 		return preview
 
 	var applied_state: TrainingState
-	if preview.can_fail:
+	if preview.can_fail and preview.failure_chance_percent > 0:
 		var rng := RandomNumberGenerator.new()
 		rng.seed = state.rng_seed
 		rng.state = state.rng_state
@@ -575,7 +705,11 @@ func apply_activity(state: TrainingState, activity_id: StringName) -> TrainingPr
 		applied_state.rng_state = rng.state
 	else:
 		preview.was_applied = true
-		preview.outcome = TrainingPreview.OUTCOME_DETERMINISTIC
+		preview.outcome = (
+			TrainingPreview.OUTCOME_SUCCESS
+			if preview.can_fail
+			else TrainingPreview.OUTCOME_DETERMINISTIC
+		)
 		applied_state = preview.success_result
 		preview.message = "Atividade concluída."
 
@@ -662,6 +796,10 @@ func _validate_state(state: TrainingState) -> String:
 		):
 			return "O campo '%s' de route_state precisa ser booleano." % route_id
 	return ""
+
+
+func validate_state(state: TrainingState) -> String:
+	return _validate_state(state)
 
 
 func _read_json(path: String) -> Variant:

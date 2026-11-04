@@ -2,9 +2,13 @@ extends Control
 
 signal week_completed(week_number: int)
 
+var persistence_enabled: bool = true
+
 const TrainingServiceScript = preload("res://scripts/training_service.gd")
 const TrainingThemeScript = preload("res://scripts/training_theme.gd")
 const NarrativeServiceScript = preload("res://scripts/narrative_service.gd")
+const EconomyServiceScript = preload("res://scripts/economy_service.gd")
+const CampaignSaveServiceScript = preload("res://scripts/campaign_save_service.gd")
 const SCENE_ASSET_PATHS: Dictionary[StringName, String] = {
 	&"academy": "res://assets/phase3/backgrounds/academy_room_bg.png",
 	&"laboratory": "res://assets/phase3/backgrounds/laboratory_bg.png",
@@ -45,7 +49,13 @@ enum HoriPresentation { RIGHT_SIDE, CENTER_STAGE, STATUS_SIDE }
 
 var _service: TrainingService
 var _narrative_service: NarrativeService
+var _economy_service: EconomyService
+var _save_service: CampaignSaveService
 var _state: TrainingState
+var _startup_save_dialog: AcceptDialog
+var _startup_saved_state: TrainingState
+var _startup_save_recoverable: bool = false
+var _startup_save_incompatible: bool = false
 var _selected_activity: StringName = &""
 var _hori_presentation: HoriPresentation = HoriPresentation.RIGHT_SIDE
 var _current_area: StringName = &"hub"
@@ -62,6 +72,7 @@ var _background: TextureRect
 var _character_stage: Control
 var _management_ui: Control
 var _hub_ui: Control
+var _shop_ui: Control
 var _training_ui: Control
 var _status_ui: Control
 var _relationships_ui: Control
@@ -111,6 +122,7 @@ var _resource_values: Dictionary[StringName, Label] = {}
 var _bond_values: Dictionary[StringName, Label] = {}
 var _credits_value: Label
 var _activity_buttons: Dictionary[StringName, Button] = {}
+var _activity_meta_labels: Dictionary[StringName, Label] = {}
 var _activity_status_labels: Dictionary[StringName, Label] = {}
 var _preview_title: Label
 var _preview_status: Label
@@ -148,6 +160,7 @@ var _hub_week_label: Label
 var _hub_actions_label: Label
 var _hub_credits_label: Label
 var _hub_objective_label: Label
+var _hub_mission_button: Button
 var _hub_semester_progress: ProgressBar
 var _hub_action_slots: Array[PanelContainer] = []
 var _hub_stat_values: Dictionary[StringName, Label] = {}
@@ -155,6 +168,10 @@ var _hub_resource_bars: Dictionary[StringName, ProgressBar] = {}
 var _hub_resource_values: Dictionary[StringName, Label] = {}
 var _hub_bond_values: Dictionary[StringName, Label] = {}
 var _hub_nav_buttons: Dictionary[StringName, Button] = {}
+var _shop_credits_label: Label
+var _shop_equipped_label: Label
+var _shop_feedback_label: Label
+var _shop_item_rows: Dictionary[StringName, Dictionary] = {}
 var _training_week_label: Label
 var _training_actions_label: Label
 var _training_credits_label: Label
@@ -184,10 +201,13 @@ var _training_nav_buttons: Dictionary[StringName, Button] = {}
 
 func _ready() -> void:
 	_service = TrainingServiceScript.new()
-	var project_data_loaded: bool = _service.load_project_data()
 	_narrative_service = NarrativeServiceScript.new()
+	_economy_service = EconomyServiceScript.new()
+	_save_service = CampaignSaveServiceScript.new()
+	var project_data_loaded: bool = _service.load_project_data()
 	var narrative_data_loaded: bool = false
 	if project_data_loaded:
+		_economy_service.set_actions_per_week(_service.get_actions_per_week())
 		_narrative_service.set_limits(
 			_service.get_attribute_cap(),
 			_service.get_resource_cap(),
@@ -205,8 +225,151 @@ func _ready() -> void:
 		_feedback_label.text = "Não foi possível carregar os dados da campanha narrativa."
 		_set_activity_buttons_enabled(false)
 		return
-	_state = _service.create_initial_state()
+	if not persistence_enabled:
+		_state = _service.create_initial_state()
+		_refresh_state()
+		return
+	var save_inspection: Dictionary = _save_service.inspect_save(
+		_service,
+		_narrative_service,
+		_economy_service
+	)
+	match String(save_inspection["status"]):
+		"valid", "recoverable":
+			_show_startup_save_dialog(save_inspection)
+		"missing":
+			_start_new_campaign(false)
+		"corrupt", "unsupported":
+			_show_incompatible_save_dialog(String(save_inspection["message"]))
+		_:
+			_feedback_label.text = (
+				"Não foi possível determinar o estado do save: %s"
+				% String(save_inspection.get("message", "erro desconhecido"))
+			)
+			_show_save_error(_feedback_label.text)
+			_set_activity_buttons_enabled(false)
+
+
+func _show_startup_save_dialog(save_inspection: Dictionary) -> void:
+	_startup_saved_state = save_inspection["state"]
+	_startup_save_recoverable = String(save_inspection["status"]) == "recoverable"
+	_startup_save_incompatible = false
+	_startup_save_dialog = AcceptDialog.new()
+	_startup_save_dialog.title = "Campanha encontrada"
+	_startup_save_dialog.dialog_text = (
+		"%s\n\nDeseja continuar a campanha salva ou iniciar uma nova?"
+		% String(save_inspection["message"])
+	)
+	_startup_save_dialog.get_ok_button().text = "Continuar"
+	_startup_save_dialog.add_button("Nova campanha", false, &"new_campaign")
+	_startup_save_dialog.confirmed.connect(_continue_saved_campaign)
+	_startup_save_dialog.custom_action.connect(_on_startup_save_custom_action)
+	add_child(_startup_save_dialog)
+	_startup_save_dialog.popup_centered()
+
+
+func _show_incompatible_save_dialog(message: String) -> void:
+	_startup_saved_state = null
+	_startup_save_recoverable = false
+	_startup_save_incompatible = true
+	_startup_save_dialog = AcceptDialog.new()
+	_startup_save_dialog.title = "Save não pode ser retomado"
+	_startup_save_dialog.dialog_text = (
+		"%s\n\nO arquivo será preservado antes de iniciar uma nova campanha."
+		% message
+	)
+	_startup_save_dialog.get_ok_button().text = "Preservar e iniciar nova"
+	_startup_save_dialog.confirmed.connect(_start_new_campaign.bind(true))
+	add_child(_startup_save_dialog)
+	_startup_save_dialog.popup_centered()
+
+
+func _on_startup_save_custom_action(action: StringName) -> void:
+	if action != &"new_campaign":
+		return
+	_start_new_campaign(false)
+
+
+func _continue_saved_campaign() -> void:
+	if _startup_saved_state == null:
+		_feedback_label.text = "O estado salvo não está disponível para retomada."
+		return
+	if _startup_save_recoverable:
+		var archive_error: String = _save_service.archive_primary_save()
+		if not archive_error.is_empty():
+			_feedback_label.text = archive_error
+			_show_save_error(archive_error)
+			return
+		var save_error: String = _save_service.save(
+			_startup_saved_state,
+			_service,
+			_narrative_service,
+			_economy_service
+		)
+		if not save_error.is_empty():
+			_feedback_label.text = (
+				"A cópia de recuperação foi preservada, mas não pôde ser restaurada: %s"
+				% save_error
+			)
+			_show_save_error(_feedback_label.text)
+			return
+	_state = _startup_saved_state.duplicate_state()
+	_startup_saved_state = null
 	_refresh_state()
+	if _state.ending_id != &"":
+		_show_campaign_ending()
+	else:
+		_process_narrative_flow()
+
+
+func _start_new_campaign(preserve_existing_save: bool) -> void:
+	if preserve_existing_save or _startup_save_incompatible:
+		var archive_error: String = _save_service.archive_primary_save()
+		if not archive_error.is_empty():
+			_feedback_label.text = archive_error
+			_show_save_error(archive_error)
+			return
+	var candidate: TrainingState = _service.create_initial_state()
+	var save_error: String = _save_service.save(
+		candidate,
+		_service,
+		_narrative_service,
+		_economy_service
+	)
+	if not save_error.is_empty():
+		_feedback_label.text = "A nova campanha não foi iniciada: %s" % save_error
+		_show_save_error(_feedback_label.text)
+		_set_activity_buttons_enabled(false)
+		return
+	_state = candidate
+	_startup_saved_state = null
+	_startup_save_incompatible = false
+	_refresh_state()
+
+
+func _persist_candidate(candidate: TrainingState) -> bool:
+	if not persistence_enabled:
+		return true
+	var save_error: String = _save_service.save(
+		candidate,
+		_service,
+		_narrative_service,
+		_economy_service
+	)
+	if not save_error.is_empty():
+		_feedback_label.text = "A alteração não foi aplicada: %s" % save_error
+		_show_save_error(_feedback_label.text)
+		return false
+	return true
+
+
+func _show_save_error(message: String) -> void:
+	var dialog := AcceptDialog.new()
+	dialog.title = "Erro de persistência"
+	dialog.dialog_text = message
+	dialog.confirmed.connect(dialog.queue_free)
+	add_child(dialog)
+	dialog.popup_centered()
 
 
 func set_character_presentation(
@@ -275,6 +438,10 @@ func _load_phase3_texture(path: String) -> Texture2D:
 
 
 func _build_interface() -> void:
+	if _economy_service == null:
+		_economy_service = EconomyServiceScript.new()
+		if _service != null:
+			_economy_service.set_actions_per_week(_service.get_actions_per_week())
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	resized.connect(_update_responsive_layout)
 	theme = TrainingThemeScript.create_theme()
@@ -319,6 +486,7 @@ func _build_interface() -> void:
 	layout.add_child(_build_main_panels())
 	layout.add_child(_build_preview_dock())
 	_build_hub_screen()
+	_build_shop_screen()
 	_build_training_screen()
 	_build_status_screen()
 	_build_relationships_screen()
@@ -858,6 +1026,7 @@ func _make_activity_button(activity_id: StringName) -> Button:
 	labels.add_child(status_label)
 
 	_activity_buttons[activity_id] = button
+	_activity_meta_labels[activity_id] = meta_label
 	_activity_status_labels[activity_id] = status_label
 	return button
 
@@ -2216,8 +2385,16 @@ func _update_training_cards() -> void:
 		var button: Button = _training_cards[activity_id]
 		var category: String = _service.get_activity_category(activity_id)
 		var category_color: Color = _training_category_color(category)
-		var cost: int = _service.get_activity_energy_cost(activity_id)
+		var cost: int = _service.get_activity_energy_cost(activity_id, _state)
 		var cost_label: String = "CUSTO %d EN" % cost
+		button.tooltip_text = (
+			"%s · %s · custo %d de energia"
+			% [
+				_service.get_activity_label(activity_id),
+				_category_label(category),
+				cost,
+			]
+		)
 		var preview_state: TrainingState = _state
 		var preview: TrainingPreview = _service.preview_activity(preview_state, activity_id)
 		var is_hypothetical: bool = false
@@ -2412,7 +2589,7 @@ func _update_training_preview(
 			"%s · custo %d EN. Nenhum bloco foi consumido."
 			% [
 				preview.message,
-				_service.get_activity_energy_cost(activity_id),
+				preview.energy_cost,
 			]
 		)
 		_training_hint_label.text = "Escolha outra atividade ou cancele a seleção."
@@ -2424,10 +2601,13 @@ func _update_training_preview(
 		_update_training_layout()
 		return
 
-	_training_preview_detail.text = "%s · custo %d EN." % [
+	var preview_details := PackedStringArray()
+	preview_details.append("%s · custo %d EN." % [
 		_category_label(_service.get_activity_category(activity_id)),
-		_service.get_activity_energy_cost(activity_id),
-	]
+		preview.energy_cost,
+	])
+	preview_details.append_array(_format_training_modifiers(preview))
+	_training_preview_detail.text = "\n".join(preview_details)
 	var success_changes: PackedStringArray = _format_compact_state_changes(
 		_state,
 		preview.success_result if preview.can_fail else preview.result,
@@ -2719,6 +2899,185 @@ func _build_hub_screen() -> void:
 	_update_hub_layout()
 
 
+func _build_shop_screen() -> void:
+	_shop_ui = Control.new()
+	_shop_ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_shop_ui.visible = false
+	add_child(_shop_ui)
+
+	var panel := PanelContainer.new()
+	panel.anchor_left = 0.08
+	panel.anchor_top = 0.12
+	panel.anchor_right = 0.92
+	panel.anchor_bottom = 0.89
+	panel.add_theme_stylebox_override(
+		"panel",
+		TrainingThemeScript.make_panel_style(
+			Color(TrainingThemeScript.PANEL, 0.94),
+			Color(TrainingThemeScript.GOLD, 0.68),
+			18,
+			1
+		)
+	)
+	_shop_ui.add_child(panel)
+
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 10)
+	panel.add_child(content)
+	var heading := HBoxContainer.new()
+	heading.add_theme_constant_override("separation", 12)
+	content.add_child(heading)
+	var title := _make_label("LOJA DA ACADEMIA", 19)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	heading.add_child(title)
+	_shop_credits_label = _make_label("", 14)
+	_shop_credits_label.add_theme_color_override(
+		"font_color",
+		TrainingThemeScript.GOLD
+	)
+	heading.add_child(_shop_credits_label)
+	var back_button := Button.new()
+	back_button.text = "Voltar ao hub"
+	back_button.pressed.connect(_show_hub)
+	_wire_button_feedback(back_button)
+	heading.add_child(back_button)
+
+	_shop_equipped_label = _make_label("", 11)
+	_shop_equipped_label.add_theme_color_override(
+		"font_color",
+		TrainingThemeScript.MINT
+	)
+	content.add_child(_shop_equipped_label)
+	_shop_feedback_label = _make_label("", 10)
+	_shop_feedback_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_shop_feedback_label.add_theme_color_override(
+		"font_color",
+		TrainingThemeScript.CREAM
+	)
+	content.add_child(_shop_feedback_label)
+
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	content.add_child(scroll)
+	var item_list := VBoxContainer.new()
+	item_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	item_list.add_theme_constant_override("separation", 8)
+	scroll.add_child(item_list)
+	for item: Dictionary in _economy_service.get_catalog():
+		var item_id: StringName = StringName(item["id"])
+		var item_panel := PanelContainer.new()
+		item_panel.add_theme_stylebox_override(
+			"panel",
+			TrainingThemeScript.make_panel_style(
+				Color(TrainingThemeScript.PETROL, 0.72),
+				Color(TrainingThemeScript.MINT, 0.28),
+				12,
+				1
+			)
+		)
+		item_list.add_child(item_panel)
+		var item_row := HBoxContainer.new()
+		item_row.add_theme_constant_override("separation", 12)
+		item_panel.add_child(item_row)
+		var description_column := VBoxContainer.new()
+		description_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		description_column.add_theme_constant_override("separation", 3)
+		item_row.add_child(description_column)
+		var item_name := _make_label(String(item["name"]), 13)
+		description_column.add_child(item_name)
+		var item_description := _make_label(String(item["description"]), 10)
+		item_description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		description_column.add_child(item_description)
+		var status_label := _make_label("", 10)
+		status_label.custom_minimum_size.x = 115
+		status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		item_row.add_child(status_label)
+		var action_button := Button.new()
+		action_button.custom_minimum_size.x = 145
+		action_button.pressed.connect(_on_shop_item_pressed.bind(item_id))
+		_wire_button_feedback(action_button)
+		item_row.add_child(action_button)
+		_shop_item_rows[item_id] = {
+			"button": action_button,
+			"status": status_label,
+			"price": int(item["price"]),
+		}
+	_update_shop_state()
+
+
+func _update_shop_state() -> void:
+	if _state == null or _shop_credits_label == null:
+		return
+	_shop_credits_label.text = "CR  %d" % _state.credits
+	var equipped_item: Dictionary = _economy_service.get_item(
+		_state.equipped_item_id
+	)
+	_shop_equipped_label.text = (
+		"Equipado: %s"
+		% String(equipped_item.get("name", "nenhum"))
+	)
+	var can_change_equipment: bool = (
+		_state.actions_remaining == _service.get_actions_per_week()
+	)
+	for item_id: StringName in _shop_item_rows:
+		var row: Dictionary = _shop_item_rows[item_id]
+		var button: Button = row["button"]
+		var status: Label = row["status"]
+		var owned: bool = _state.inventory.has(item_id)
+		var equipped: bool = _state.equipped_item_id == item_id
+		if equipped:
+			status.text = (
+				"Equipado"
+				if can_change_equipment
+				else "Equipado · troca na próxima semana"
+			)
+			button.text = "Desequipar"
+			button.disabled = not can_change_equipment
+		elif owned:
+			status.text = (
+				"No inventário"
+				if can_change_equipment
+				else "No inventário · troca na próxima semana"
+			)
+			button.text = "Equipar"
+			button.disabled = not can_change_equipment
+		else:
+			var price: int = int(row["price"])
+			if _state.credits >= price:
+				status.text = "%d CR" % price
+			else:
+				status.text = "%d CR · faltam %d" % [
+					price,
+					price - _state.credits,
+				]
+			button.text = "Comprar"
+			button.disabled = _state.credits < price
+
+
+func _on_shop_item_pressed(item_id: StringName) -> void:
+	if _state == null:
+		return
+	var candidate: TrainingState = _state.duplicate_state()
+	var action_error: String
+	if candidate.inventory.has(item_id):
+		action_error = _economy_service.equip_item(
+			candidate,
+			&"" if candidate.equipped_item_id == item_id else item_id
+		)
+	else:
+		action_error = _economy_service.purchase_item(candidate, item_id)
+	if not action_error.is_empty():
+		_shop_feedback_label.text = action_error
+		return
+	if not _persist_candidate(candidate):
+		_shop_feedback_label.text = _feedback_label.text
+		return
+	_state.copy_from(candidate)
+	_shop_feedback_label.text = "Alteração da loja salva."
+	_refresh_state()
+
+
 func _update_hub_layout() -> void:
 	if _hub_profile_panel == null:
 		return
@@ -2910,6 +3269,22 @@ func _build_hub_profile_panel() -> PanelContainer:
 	)
 	training_button.pressed.connect(_show_management_area.bind(&"training"))
 	content.add_child(training_button)
+	_hub_mission_button = Button.new()
+	_hub_mission_button.text = "INICIAR MISSÃO"
+	_hub_mission_button.custom_minimum_size.y = 42
+	_hub_mission_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_hub_mission_button.add_theme_stylebox_override(
+		"normal",
+		TrainingThemeScript.make_panel_style(
+			Color(TrainingThemeScript.PANEL, 0.94),
+			TrainingThemeScript.GOLD,
+			14,
+			1
+		)
+	)
+	_hub_mission_button.pressed.connect(_open_mission_stage)
+	_hub_mission_button.visible = false
+	content.add_child(_hub_mission_button)
 	return panel
 
 
@@ -2955,7 +3330,13 @@ func _build_hub_navigation() -> PanelContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 5)
 	panel.add_child(row)
-	for area: StringName in [&"hub", &"training", &"status", &"relationships"]:
+	for area: StringName in [
+		&"hub",
+		&"training",
+		&"status",
+		&"relationships",
+		&"shop",
+	]:
 		var button := Button.new()
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		button.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -2996,6 +3377,8 @@ func _hub_area_label(area: StringName) -> String:
 			return "◇  STATUS"
 		&"relationships":
 			return "♡  RELAÇÕES"
+		&"shop":
+			return "▣  LOJA"
 		_:
 			return String(area).to_upper()
 
@@ -3011,6 +3394,8 @@ func _control_for_area(area: StringName) -> Control:
 	match area:
 		&"hub":
 			return _hub_ui
+		&"shop":
+			return _shop_ui
 		&"training":
 			return _training_ui
 		&"status":
@@ -3023,6 +3408,7 @@ func _control_for_area(area: StringName) -> Control:
 
 func _set_visible_area(area: StringName) -> void:
 	_hub_ui.visible = area == &"hub"
+	_shop_ui.visible = area == &"shop"
 	_training_ui.visible = area == &"training"
 	_status_ui.visible = area == &"status"
 	_relationships_ui.visible = area == &"relationships"
@@ -3031,6 +3417,7 @@ func _set_visible_area(area: StringName) -> void:
 		and area != &"training"
 		and area != &"status"
 		and area != &"relationships"
+		and area != &"shop"
 	)
 
 
@@ -3098,7 +3485,9 @@ func _show_management_area(area: StringName) -> void:
 		_update_status_state()
 	elif area == &"relationships":
 		_update_relationships_state()
-	if area in [&"status", &"relationships"]:
+	elif area == &"shop":
+		_update_shop_state()
+	if area in [&"status", &"relationships", &"shop"]:
 		_set_scene_context(&"academy")
 	_update_training_navigation()
 	_update_status_navigation()
@@ -3191,6 +3580,16 @@ func _update_hub_state() -> void:
 			_display_bond_name(bond_id),
 			int(_state.bonds.get(bond_id, 0)),
 		]
+	var mission_available: bool = (
+		_narrative_service != null
+		and _narrative_service.is_mission_due(_state)
+	)
+	_hub_mission_button.visible = mission_available
+	_hub_mission_button.text = (
+		"INICIAR MISSÃO"
+		if _state.mission_stage == 0
+		else "CONTINUAR MISSÃO"
+	)
 	_hub_objective_label.text = _get_hub_objective_text()
 
 
@@ -3200,6 +3599,11 @@ func _get_hub_objective_text() -> String:
 	if _narrative_service.is_mission_due(_state):
 		var stage: Dictionary = _narrative_service.get_current_mission_stage(_state)
 		if not stage.is_empty():
+			if _state.mission_stage == 0:
+				return (
+					"%s · disponível para iniciar nesta semana; pode ser adiada até "
+					+ "o avanço da semana 8 para 9."
+				) % _narrative_service.get_mission_title()
 			return "%s  ·  %s" % [
 				_narrative_service.get_mission_title(),
 				String(stage.get("objective", "")),
@@ -3628,7 +4032,7 @@ func _process_narrative_flow() -> void:
 	if not next_event.is_empty():
 		_open_narrative_event(next_event)
 		return
-	if _narrative_service.is_mission_due(_state):
+	if _state.mission_stage > 0 and _narrative_service.is_mission_due(_state):
 		_open_mission_stage()
 		return
 	if (
@@ -3726,13 +4130,9 @@ func _open_mission_stage() -> void:
 	_update_mission_progress(int(_active_mission_stage["stage"]) - 1)
 	_mission_requirement_note.visible = int(_active_mission_stage["stage"]) == 2
 	if _mission_requirement_note.visible:
-		_mission_requirement_note.text = (
-			"PULSO DE CONTENÇÃO  ·  sucesso se estabilidade ≥ %d e Técnica ≥ %d; "
-			+ "caso contrário, falha recuperável."
-		) % [
-			NarrativeService.PULSE_MIN_CORE_STABILITY,
-			NarrativeService.PULSE_MIN_TECHNIQUE,
-		]
+		_mission_requirement_note.text = _narrative_service.pulse_requirement_message(
+			_state
+		)
 	_dialogue_history_toggle.visible = false
 	_dialogue_history_scroll.visible = false
 	_narrative_choice_scroll.visible = true
@@ -3771,7 +4171,11 @@ func _show_campaign_ending() -> void:
 	if ending.is_empty():
 		_feedback_label.text = "A campanha terminou, mas nenhum final elegível foi encontrado."
 		return
-	_state.ending_id = StringName(ending["id"])
+	var ending_state: TrainingState = _state.duplicate_state()
+	ending_state.ending_id = StringName(ending["id"])
+	if not _persist_candidate(ending_state):
+		return
+	_state.copy_from(ending_state)
 	_set_scene_context(&"observatory")
 	_set_dialogue_portrait("hori", &"neutral")
 	_narrative_body.custom_minimum_size.y = 96
@@ -3834,20 +4238,25 @@ func _on_narrative_choice_pressed(choice_id: StringName) -> void:
 		return
 	var was_mission_choice: bool = _narrative_mode == &"mission_choices"
 	var state_before: TrainingState = _state.duplicate_state()
+	var candidate: TrainingState = _state.duplicate_state()
 	var result: NarrativeResult
 	if _narrative_mode == &"event_choices":
 		result = _narrative_service.apply_event_choice(
-			_state,
+			candidate,
 			StringName(_active_event["id"]),
 			choice_id
 		)
 	elif _narrative_mode == &"mission_choices":
-		result = _narrative_service.apply_mission_choice(_state, choice_id)
+		result = _narrative_service.apply_mission_choice(candidate, choice_id)
 	else:
 		return
 	if not result.is_valid:
 		_narrative_result.text = result.message
 		return
+	if not _persist_candidate(candidate):
+		_narrative_result.text = _feedback_label.text
+		return
+	_state.copy_from(candidate)
 	_narrative_mode = (
 		&"event_result"
 		if _narrative_mode == &"event_choices"
@@ -4033,7 +4442,7 @@ func _on_activity_selected(activity_id: StringName) -> void:
 			"Categoria: %s  ·  Energia necessária: %d\n%s"
 			% [
 				_category_label(_service.get_activity_category(activity_id)),
-				_service.get_activity_energy_cost(activity_id),
+				preview.energy_cost,
 				preview.message,
 			]
 		)
@@ -4076,7 +4485,8 @@ func _on_confirm_pressed() -> void:
 		return
 	var activity_id: StringName = _selected_activity
 	var state_before: TrainingState = _state.duplicate_state()
-	var applied: TrainingPreview = _service.apply_activity(_state, activity_id)
+	var candidate: TrainingState = _state.duplicate_state()
+	var applied: TrainingPreview = _service.apply_activity(candidate, activity_id)
 	if not applied.is_valid:
 		_preview_status.text = "INDISPONÍVEL"
 		_preview_status.add_theme_color_override(
@@ -4099,7 +4509,11 @@ func _on_confirm_pressed() -> void:
 		)
 		_feedback_label.text = "Nenhum recurso ou bloco foi consumido."
 		return
+	if not _persist_candidate(candidate):
+		_feedback_label.text = "Nenhum recurso ou bloco foi consumido. %s" % _feedback_label.text
+		return
 
+	_state.copy_from(candidate)
 	_selected_activity = &""
 	_refresh_state()
 	_show_training_result(activity_id, state_before, applied)
@@ -4155,8 +4569,48 @@ func _on_cancel_pressed() -> void:
 
 
 func _on_advance_week_pressed() -> void:
-	if _state == null or not _service.advance_week(_state):
+	if _state == null:
 		return
+	var deadline_due: bool = (
+		_state.week == 8
+		and _state.actions_remaining == 0
+		and _state.mission_stage < 3
+		and not bool(_state.flags.get(&"final_mission_resolved", false))
+	)
+	if deadline_due:
+		var dialog := ConfirmationDialog.new()
+		dialog.title = "Encerrar prazo da missão?"
+		dialog.dialog_text = (
+			"Ao avançar para a semana 9, a missão será encerrada sem conclusão. "
+			+ "Isso não registra uma tentativa se nenhuma escolha foi feita."
+		)
+		dialog.get_ok_button().text = "Avançar e encerrar prazo"
+		dialog.get_cancel_button().text = "Continuar na semana 8"
+		dialog.confirmed.connect(_advance_week_transaction)
+		add_child(dialog)
+		dialog.popup_centered()
+		return
+	_advance_week_transaction()
+
+
+func _advance_week_transaction() -> void:
+	if _state == null:
+		return
+	var candidate: TrainingState = _state.duplicate_state()
+	var deadline_due: bool = (
+		candidate.week == 8
+		and candidate.actions_remaining == 0
+		and candidate.mission_stage < 3
+		and not bool(candidate.flags.get(&"final_mission_resolved", false))
+	)
+	if deadline_due and not _narrative_service.expire_mission_by_deadline(candidate):
+		_feedback_label.text = "Não foi possível registrar o encerramento do prazo da missão."
+		return
+	if not _service.advance_week(candidate):
+		return
+	if not _persist_candidate(candidate):
+		return
+	_state.copy_from(candidate)
 	_selected_activity = &""
 	_set_scene_context(&"academy")
 	_preview_title.text = "NOVA SEMANA"
@@ -4216,6 +4670,7 @@ func _refresh_state() -> void:
 	else:
 		_advance_button.text = "Avançar semana"
 	_update_hub_state()
+	_update_shop_state()
 	_update_status_state()
 	_update_relationships_state()
 
@@ -4248,7 +4703,7 @@ func _update_activity_buttons() -> void:
 			status = "Semana concluída"
 			status_color = TrainingThemeScript.CORAL
 		else:
-			var cost: int = _service.get_activity_energy_cost(activity_id)
+			var cost: int = _service.get_activity_energy_cost(activity_id, _state)
 			var missing: int = maxi(0, cost - _state.energy)
 			if missing > 0:
 				status = "Bloqueada · faltam %d EN" % missing
@@ -4262,6 +4717,14 @@ func _update_activity_buttons() -> void:
 				status_color = TrainingThemeScript.MINT
 				button.tooltip_text = "Custo de energia: %d." % cost
 		_activity_status_labels[activity_id].text = status
+		var current_cost: int = _service.get_activity_energy_cost(activity_id, _state)
+		_activity_meta_labels[activity_id].text = (
+			"%s  ·  Custo %d EN"
+			% [
+				_category_label(_service.get_activity_category(activity_id)),
+				current_cost,
+			]
+		)
 		_activity_status_labels[activity_id].add_theme_color_override(
 			"font_color",
 			status_color
@@ -4275,10 +4738,18 @@ func _format_preview(activity_id: StringName, preview: TrainingPreview) -> Strin
 		"Categoria: %s  ·  Energia necessária: %d"
 		% [
 			_category_label(_service.get_activity_category(activity_id)),
-			_service.get_activity_energy_cost(activity_id),
+			preview.energy_cost,
 		]
 	)
+	lines.append_array(_format_training_modifiers(preview))
 	if preview.can_fail:
+		lines.append(
+			"Risco base %d%% → risco final %d%%."
+			% [
+				preview.base_failure_chance_percent,
+				preview.failure_chance_percent,
+			]
+		)
 		var success_changes: PackedStringArray = _format_state_changes(
 			_state,
 			preview.success_result,
@@ -4326,6 +4797,42 @@ func _format_preview(activity_id: StringName, preview: TrainingPreview) -> Strin
 			% [_state.actions_remaining, preview.result.actions_remaining]
 		)
 	return "\n".join(lines)
+
+
+func _format_training_modifiers(preview: TrainingPreview) -> PackedStringArray:
+	var lines := PackedStringArray()
+	if _service.get_activity_category(preview.activity_id) != "training":
+		return lines
+	lines.append(
+		"Fatores de ganho: aptidão ×%.2f; motivação ×%.2f."
+		% [preview.aptitude_multiplier, preview.motivation_multiplier]
+	)
+	lines.append(
+		"Mentoria: %s."
+		% (
+			"disponível (−5 pontos percentuais de risco)"
+			if preview.mentor_available
+			else "indisponível"
+		)
+	)
+	var equipped_item: Dictionary = _economy_service.get_item(preview.equipment_id)
+	lines.append(
+		"Equipamento: %s."
+		% String(equipped_item.get("name", "nenhum"))
+	)
+	var gain_details := PackedStringArray()
+	for stat_id: StringName in preview.calculated_attribute_gains:
+		gain_details.append(
+			"%s +%d (efetivo +%d)"
+			% [
+				STAT_SHORT_LABELS[stat_id],
+				preview.calculated_attribute_gains[stat_id],
+				preview.attribute_gains[stat_id],
+			]
+		)
+	if not gain_details.is_empty():
+		lines.append("Ganhos calculados/aplicados: %s." % ", ".join(gain_details))
+	return lines
 
 
 func _format_applied_result(

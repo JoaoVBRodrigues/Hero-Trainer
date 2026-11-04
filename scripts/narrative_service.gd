@@ -220,10 +220,45 @@ func apply_event_choice(
 func is_mission_due(state: TrainingState) -> bool:
 	if state == null or _mission.is_empty() or state.mission_stage >= 3:
 		return false
-	if bool(state.flags.get(&"final_mission_attempted", false)):
+	if bool(state.flags.get(&"final_mission_resolved", false)):
 		return false
 	var window: Dictionary = _mission["window"]
-	return state.week >= int(window["week_min"])
+	return (
+		state.week >= int(window["week_min"])
+		and state.week <= int(window["week_max"])
+	)
+
+
+func expire_mission_by_deadline(state: TrainingState) -> bool:
+	if (
+		state == null
+		or _mission.is_empty()
+		or state.actions_remaining != 0
+		or state.mission_stage >= 3
+		or bool(state.flags.get(&"final_mission_resolved", false))
+	):
+		return false
+	var window: Dictionary = _mission["window"]
+	if state.week != int(window["week_max"]):
+		return false
+	state.flags[&"final_mission_success"] = false
+	state.flags[&"final_mission_failed_by_deadline"] = true
+	state.flags[&"final_mission_resolved"] = true
+	return true
+
+
+func pulse_requirement_message(state: TrainingState) -> String:
+	var stability: int = int(state.route_state.get(&"core_stability", 0))
+	var technique: int = int(state.stats.get(&"tec", 0))
+	return (
+		"Pulso de Contenção — estabilidade %d/%d; Técnica %d/%d."
+		% [
+			stability,
+			PULSE_MIN_CORE_STABILITY,
+			technique,
+			PULSE_MIN_TECHNIQUE,
+		]
+	)
 
 
 func get_current_mission_stage(state: TrainingState) -> Dictionary:
@@ -301,9 +336,15 @@ func apply_mission_choice(
 	if not _apply_effects(next_state, choice[effects_key], result):
 		result.is_valid = false
 		return result
+	next_state.flags[&"final_mission_attempted"] = true
 	next_state.mission_stage += 1
 	if next_state.mission_stage >= 3:
-		next_state.flags[&"final_mission_attempted"] = true
+		next_state.flags[&"final_mission_completed"] = true
+		next_state.flags[&"final_mission_success"] = (
+			result.outcome == &"success"
+		)
+		next_state.flags[&"final_mission_failed_by_deadline"] = false
+		next_state.flags[&"final_mission_resolved"] = true
 	state.copy_from(next_state)
 	result.message = _mission_outcome_message(choice, result.outcome)
 	result.message += " Etapa %d de 3 concluída." % result.stage_number
@@ -311,7 +352,7 @@ func apply_mission_choice(
 
 
 func resolve_ending(state: TrainingState) -> Dictionary:
-	if state == null or not bool(state.flags.get(&"final_mission_attempted", false)):
+	if state == null or not bool(state.flags.get(&"final_mission_resolved", false)):
 		return {}
 	var selected: Dictionary = {}
 	var selected_priority: int = -2147483648
@@ -323,6 +364,13 @@ func resolve_ending(state: TrainingState) -> Dictionary:
 			selected = ending
 			selected_priority = priority
 	return selected.duplicate(true)
+
+
+func validate_campaign_state(state: TrainingState) -> String:
+	var result := NarrativeResult.new()
+	if not _is_state_valid(state, result):
+		return result.message
+	return ""
 
 
 func get_ending(ending_id: StringName) -> Dictionary:
@@ -662,6 +710,10 @@ func _is_state_valid(state: TrainingState, result: NarrativeResult) -> bool:
 	if state.mission_stage < 0 or state.mission_stage > 3:
 		result.message = "A etapa de missão está fora dos limites."
 		return false
+	var mission_error: String = _mission_state_error(state)
+	if not mission_error.is_empty():
+		result.message = mission_error
+		return false
 	if state.stats.size() != TrainingState.ATTRIBUTE_IDS.size():
 		result.message = "O conjunto de atributos da campanha está inválido."
 		return false
@@ -697,6 +749,48 @@ func _is_state_valid(state: TrainingState, result: NarrativeResult) -> bool:
 		result.message = "A reputação da campanha está fora dos limites."
 		return false
 	return true
+
+
+func _mission_state_error(state: TrainingState) -> String:
+	for flag_id: StringName in TrainingState.MISSION_FLAG_IDS:
+		if typeof(state.flags.get(flag_id, false)) != TYPE_BOOL:
+			return "A flag de missão '%s' precisa ser booleana." % flag_id
+	var attempted: bool = bool(state.flags.get(&"final_mission_attempted", false))
+	var completed: bool = bool(state.flags.get(&"final_mission_completed", false))
+	var success: bool = bool(state.flags.get(&"final_mission_success", false))
+	var deadline_failed: bool = bool(
+		state.flags.get(&"final_mission_failed_by_deadline", false)
+	)
+	var resolved: bool = bool(state.flags.get(&"final_mission_resolved", false))
+	if success and not completed:
+		return "Sucesso da missão exige conclusão."
+	if completed and not resolved:
+		return "Conclusão da missão exige resolução."
+	if completed and not attempted:
+		return "Conclusão da missão exige uma tentativa real."
+	if attempted and state.week < 8:
+		return "A missão não pode ter sido tentada antes da semana 8."
+	if completed and state.mission_stage != 3:
+		return "Missão concluída precisa estar na terceira etapa."
+	if completed and state.week < 8:
+		return "A missão não pode ser concluída antes da semana 8."
+	if state.mission_stage == 3 and not completed:
+		return "A terceira etapa exige estado de missão concluído."
+	if state.mission_stage > 0 and not attempted:
+		return "Progresso de missão exige uma tentativa registrada."
+	if attempted and state.mission_stage == 0:
+		return "Tentativa registrada sem progresso de missão."
+	if deadline_failed and (
+		not resolved or completed or success or state.mission_stage >= 3
+	):
+		return "Falha por prazo exige missão resolvida e não concluída."
+	if deadline_failed and state.week < 9:
+		return "A falha por prazo só é válida após a transição para a semana 9."
+	if resolved != (completed or deadline_failed):
+		return "O estado resolvido da missão não corresponde ao resultado terminal."
+	if state.week > 8 and not resolved:
+		return "Uma campanha após a semana 8 precisa registrar o resultado do prazo."
+	return ""
 
 
 func _validate_root(value: Variant, allowed_keys: Array[String], description: String) -> bool:

@@ -56,7 +56,7 @@
       "conditions": {
         "all": [
           { "path": "axes.autonomy", "op": ">=", "value": 15 },
-          { "path": "flags.final_mission_attempted", "op": "==", "value": true }
+          { "path": "flags.final_mission_completed", "op": "==", "value": true }
         ]
       },
       "tag": "personal",
@@ -73,22 +73,22 @@
       "id": "hori_overburdened",
       "character": "hori",
       "priority": 10,
-      "title": "O peso que ela carrega sorrindo",
+      "title": "O caminho continua",
       "conditions": {
         "all": [
-          { "path": "flags.final_mission_attempted", "op": "==", "value": true }
+          { "path": "flags.final_mission_resolved", "op": "==", "value": true }
         ]
       },
       "tag": "fallback",
-      "justification": "Fallback garantido: qualquer campanha que chegue à missão intermediária, mesmo sem atingir os limiares dos outros três finais, recebe este desfecho. Agridoce por definição, nunca punitivo em relação a traços canônicos de Hori.",
-      "how_to_reach": "Resultado padrão quando nenhuma das três condições anteriores é satisfeita — tipicamente associado a escolhas como hori_hid_echo_event, hori_moved_on_quickly e baixa pontuação geral de eixos/vínculos.",
-      "epilogue_text": "Hori segue em frente. Continua sorrindo, continua competente, continua sendo a primeira a fazer piada numa sala tensa. Só que boa parte do que ela carrega nunca chegou a aparecer pra ninguém — não porque ninguém se importasse, mas porque ela nunca deixou aparecer. O jogo termina sem tragédia: ela está bem o suficiente pra continuar. Só não está necessariamente bem.",
+      "justification": "Fallback garantido para qualquer campanha com missão resolvida que não atenda aos três finais de maior prioridade. Inclui expiração do calendário e não é punição por traços canônicos, condição ou sofrimento de Hori.",
+      "how_to_reach": "Resultado padrão quando nenhuma das três condições anteriores é satisfeita, inclusive quando a missão expira sem tentativa ou após progresso parcial.",
+      "epilogue_text": "Hori segue em frente. Continua sorrindo, competente e sendo a primeira a fazer piada numa sala tensa. Nem tudo que ela atravessa fica visível para as pessoas ao redor, e isso não torna menos reais os vínculos que construiu. A campanha termina sem tragédia: Hori continua com espaço para conversar, pedir apoio ou seguir no próprio ritmo. Este desfecho não define sua condição nem seu futuro.",
       "consequences": {
         "hori": "Sustenta a própria rotina sem colapsar, mas sem rede de apoio totalmente ciente do que ela enfrenta.",
         "luppi": "Permanece presente, mas com acesso limitado ao que Hori realmente sente — a amizade segue, incompleta.",
         "ray": "Permanece presente, mas na mesma condição de acesso limitado; nenhuma das duas rompe o vínculo, só não o aprofundam."
       },
-      "epilogue_note": "Este final e explicitamente nao uma punicao por Hori ouvir a voz ou ter dificuldade de reconhecimento facial; e consequencia especifica de ocultacao repetida de informacao, reversivel em uma eventual continuacao."
+      "epilogue_note": "O prazo da missão é uma circunstância do calendário, não um julgamento sobre Hori. Ouvir a voz ou ter dificuldade para reconhecer rostos não é motivo de punição neste final."
     }
   ]
 }

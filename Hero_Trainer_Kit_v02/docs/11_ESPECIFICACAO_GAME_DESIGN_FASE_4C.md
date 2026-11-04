@@ -2,10 +2,10 @@
 
 **Versão:** decisões consolidadas 0.2
 **Data:** 2026-11-04  
-**Status:** Fase 4C.1 consolidada; decisões prontas para revisão do autor; implementação não autorizada
+**Status:** baseline de design consolidada; implementação autorizada em etapas; estado e limites de validação registrados em [14_IMPLEMENTACAO_FASE_4C.md](./14_IMPLEMENTACAO_FASE_4C.md)
 **Método:** inspeção estática de documentos, GDScript, JSON e testes. Não foram executados Godot, testes, simulações, builds ou verificações visuais.
 
-> **Convenção:** **[REQUISITO DO AUTOR]** identifica uma decisão autoral inviolável. **[DECISÃO 4C.1]** identifica uma escolha de design consolidada após revisão sequencial dos quatro perfis. **[PROPOSTA HISTÓRICA]** identifica alternativas registradas antes da consolidação; não prevalecem sobre as decisões atuais.
+> **Convenção:** **[REQUISITO DO AUTOR]** identifica uma decisão autoral inviolável. **[DECISÃO 4C.1]** identifica uma escolha de design consolidada após revisão sequencial dos quatro perfis. **[PROPOSTA HISTÓRICA]** identifica alternativas registradas antes da consolidação; não prevalecem sobre as decisões atuais. Este documento descreve a baseline anterior à implementação; o registro 14 informa o que foi aplicado e o que permanece sem validação de runtime.
 
 ## Registro de consolidação da Fase 4C.1
 

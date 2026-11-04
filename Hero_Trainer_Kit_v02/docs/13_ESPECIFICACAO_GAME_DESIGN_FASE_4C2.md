@@ -2,11 +2,11 @@
 
 **Versão:** proposta operacional 1.0  
 **Data:** 2026-11-04  
-**Status:** especificação pronta para revisão; implementação não autorizada  
+**Status:** especificação aprovada como baseline de implementação; implementação autorizada em etapas; progresso registrado em [14_IMPLEMENTACAO_FASE_4C.md](./14_IMPLEMENTACAO_FASE_4C.md)  
 **Dependência:** decisões de baseline em [`12_DECISOES_GAME_DESIGN_FASE_4C1.md`](./12_DECISOES_GAME_DESIGN_FASE_4C1.md)  
 **Método:** análise estática e cálculos manuais. Nenhum Godot, teste, campanha simulada ou build foi executado.
 
-> **Certeza:** regras de calendário, limites e atividades descritas como atuais vêm do código/dados inspecionados. As novas fórmulas e números deste documento são decisões de design para a futura implementação e ajuste após testes localizados autorizados; não são cânone nem resultados de playtest.
+> **Certeza:** regras de calendário, limites e atividades descritas como atuais vêm do código/dados inspecionados. As novas fórmulas e números deste documento são decisões de design para implementação e ajuste após testes localizados autorizados; não são cânone nem resultados de playtest. O registro 14 diferencia código preparado de comportamento validado em runtime.
 
 ## 1. Objetivo e escopo
 
@@ -339,4 +339,4 @@ Mostrar resultado real, ganhos efetivos, custos cobrados, chance considerada e s
 - Os exemplos e resultados de fórmulas foram calculados manualmente a partir dos valores declarados.
 - Nenhum teste automatizado, Godot, Play, runner, simulação, build ou benchmark foi executado.
 - A especificação não modifica código ou dados do jogo. Qualquer divergência com a implementação atual será resolvida somente em etapa de implementação aprovada.
-- Dependente de revisão do autor antes de iniciar implementação 4C.2.
+- Implementação autorizada em etapas pelo autor. Execução de Godot, testes, runner, simulações, builds e benchmarks não foi autorizada nesta etapa; consulte o registro 14 para o status verificável.
